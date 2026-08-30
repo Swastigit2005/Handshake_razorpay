@@ -1,0 +1,7 @@
+{
+  "python.analysis.extraPaths": ["."],
+  "python.testing.pytestArgs": ["handshake/tests"],
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "files.exclude": { "**/__pycache__": true, "**/*.pyc": true }
+}

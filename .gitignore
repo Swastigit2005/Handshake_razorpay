@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Secrets. Never commit these.
+.env
+.env.*
+!.env.example
+
+# Batch artefacts are regenerated. The canonical run is committed as evidence:
+runs/*
+!runs/.gitkeep
+!runs/batch_canonical_*

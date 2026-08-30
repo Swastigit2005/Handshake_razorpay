@@ -1,0 +1,5 @@
+# Core runtime has no third-party dependencies: the default batch runs on the
+# Python standard library alone.
+pytest>=8.0          # tests
+razorpay>=1.4        # only needed when HS_PAYMENTS=razorpay
+anthropic>=0.40      # only needed when HS_BUYERS=llm (or use openai instead)

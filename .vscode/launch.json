@@ -1,0 +1,34 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Batch — 500 sessions",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "handshake.experiments.run",
+      "args": ["--sessions", "500"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    {
+      "name": "Batch — kill switch (R-11)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "handshake.experiments.run",
+      "args": ["--sessions", "200", "--kill-switch"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Batch — Razorpay test mode + LLM buyers",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "handshake.experiments.run",
+      "args": ["--sessions", "60"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "env": { "HS_PAYMENTS": "razorpay", "HS_BUYERS": "llm" }
+    }
+  ]
+}
