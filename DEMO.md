@@ -5,22 +5,34 @@ runtime 4:50, which leaves ten seconds of headroom.
 
 ## Before you record
 
+Record against the **deployed URL**, not localhost. A judge should watch the same
+thing they can open themselves.
+
+    https://handshake-console.onrender.com
+
 ```bash
-pip install ".[console,dev]"
-python3 -m pytest handshake/tests -q          # 53 passing
-python3 -m handshake.experiments.run --sessions 500 --tag canonical
-python3 -m handshake.readiness.run  --sessions 300 --tag canonical
-./run_ui.sh
+./verify.sh          # locally, once: 57 tests, the batch, the scan, the chain
 ```
 
-Running the batch and the scan **before** you record matters: the Overview tab
-hydrates from the last stored run, so the page already shows real figures when
-the video opens. Then set the browser to 1440×900, hide bookmarks, and pick one
-theme and stay in it.
+Then, in the browser:
 
-If you have keys configured, run `python3 preflight.py` first and check that
-the header badges read `payments: razorpay` and `buyers: llm` in green. If a
-key is spent, tick **offline** — an honest offline run beats a broken live one.
+1. Load the URL once and leave it loaded — the free instance sleeps after 15
+   minutes and takes about a minute to wake. Never record a cold start.
+2. Confirm the **Overview** tab reads the canonical committed figures:
+   ₹3,50,019 recovered · 67.3 pts lift · readiness 84.3%. If it shows a smaller
+   number, you ran a demo batch and the Overview is now showing *that* run —
+   either say so on camera or redeploy to reset it.
+3. Dismiss the Chrome default-browser banner, hide the bookmarks bar
+   (`Cmd+Shift+B`), close any video-call PIP window, go full screen.
+4. Pick one theme and stay in it.
+
+Record with `Cmd+Shift+5` → *Record Entire Screen*, microphone on.
+
+The deployed instance runs `payments: sim` and `buyers: heuristic` deliberately —
+no keys on a public URL, and no stranger burning your LLM quota. The live-backend
+run (`HS_PAYMENTS=razorpay`, `HS_BUYERS=llm`, 500 of 500 decisions from
+`gpt-oss-20b`) is in the README, and the two land within three points of each
+other. Say that out loud rather than hiding it.
 
 ---
 
@@ -29,9 +41,9 @@ key is spent, tick **offline** — an honest offline run beats a broken live one
 ### 0:00–0:20 · The number, first
 **On screen:** Overview tab, already loaded.
 
-> "Five hundred agent-driven checkout sessions. Three lakh seven thousand rupees
-> of basket value recovered that would otherwise have been lost, at a cost of
-> under one percent of margin. Here's why that number exists."
+> "Five hundred agent-driven checkout sessions. Three and a half lakh rupees of
+> basket value recovered that would otherwise have been lost, at a cost of a
+> fifth of one percent of margin. Here's why that number exists."
 
 Do not explain the product yet. Lead with the result.
 
@@ -81,18 +93,38 @@ Let the pipeline light up and narrate the stages as they land:
 
 ### 2:50–3:30 · Attack it, and the honest numbers
 **On screen:** Recovery tab, scroll to "What the gate refused" and "Diagnosis
-accuracy". Flip the **kill switch** on and off once.
+accuracy".
 
 > "Eighteen actions refused in this batch. R-10 ten times — a decline with no
 > usable reason code, where the engine refuses to guess rather than invent a
 > cause. R-04 blocked a discount that would have breached the margin floor.
 >
-> Macro-F1 of 0.92 against ground truth, with twenty sessions left unclassified
-> and twenty-two exceptions I could not resolve, listed in full.
->
-> And the kill switch is live — flip it mid-batch and every money action stops."
+> Macro-F1 of 0.936 against ground truth, with fourteen sessions left
+> unclassified and twenty-two exceptions I could not resolve, listed in full."
 
-### 3:30–4:20 · Prevention, which is the bigger half
+### 3:30–3:50 · The kill switch, as a controlled pair
+**On screen:** flip **KILL SWITCH · R-11** to `on` *before* the run, execute 200
+sessions, then flip it off and run the identical 200 again.
+
+Do not attempt a mid-run flip on the deployed instance — the batch finishes
+faster than you can narrate. The before/after pair is stronger anyway, because
+it is a comparison rather than a stunt.
+
+> "Kill switch on. Same two hundred sessions, all forty-six failures diagnosed
+> correctly — and the gate refuses every single money action under R-11.
+> Recoveries drop to four, concession ratio to zero, and all forty-six failures
+> route to the exception list.
+>
+> Those four are not the system. They are buyers who retried and succeeded on
+> their own — the ledger attributes them to the buyer, not to the recovery layer.
+> That is the counterfactual, and it is why there is a randomised control arm at
+> all.
+>
+> Switch off, same two hundred sessions: thirty-six recoveries, one lakh
+> thirty-six thousand rupees. The only thing that changed is a human's
+> permission."
+
+### 3:50–4:30 · Prevention, which is the bigger half
 **On screen:** Prevention tab → **Scan catalogue** (or the already-loaded result).
 
 > "Everything so far is reactive: a sale fails, I win it back. But the same
@@ -108,13 +140,18 @@ accuracy". Flip the **kill switch** on and off once.
 >
 > That version needs no integration at all. Point it at a public product feed."
 
-### 4:20–4:50 · What's real, and what's next
+### 4:30–4:55 · What's real, and what's next
 **On screen:** the "What is real here" note, then the header badges.
 
-> "Payments are live Razorpay test-mode orders. Buyer decisions came from a real
-> model — 499 of 500. The catalogue and the faults are synthetic, and both arms
-> of every comparison share that, so the lift measures the system and not the
-> market. The badges say which backends any run actually used.
+> "This instance runs the offline reproducible path — no keys on a public URL.
+> The live run is in the README: payments are Razorpay test-mode orders, and
+> 500 of 500 buyer decisions came from a real model. The two agree within three
+> points, which is the point: the layer does not depend on how good the buyer
+> agent is.
+>
+> The catalogue and the faults are synthetic, and both arms of every comparison
+> share that, so the lift measures the system and not the market. The badges say
+> which backends any run actually used.
 >
 > The gap I haven't closed: no agent today polls a re-offer endpoint. That
 > primitive doesn't exist in ACP or UAP. Someone has to define it, and a
@@ -148,11 +185,17 @@ model. Treatment and control share the same synthetic world, so the lift measure
 the system. And because I injected the faults, I have ground truth — which is the
 only reason diagnosis accuracy can be reported honestly instead of asserted.
 
-**"68% recovery is implausible."** For human abandonment, yes. Agent failures are
+**"Your kill switch still recovered twenty-six thousand rupees."** Those are
+buyers that retried and converted without help — the ledger records them as
+`buyer_self_recovery`, attributed to the buyer, not the layer, and the concession
+ratio is zero because no money action executed. It is the same effect the control
+arm measures, and reporting it rather than zeroing it is the honest choice.
+
+**"71% recovery is implausible."** For human abandonment, yes. Agent failures are
 deterministic: supply the missing attribute and the same agent converts. The rate
 is also a function of the fault mix I chose, which is why the per-cause table is
-the portable result — data defects recover at 100%, consent-bound at 67%,
-funds-bound at 0–40%.
+the portable result — data defects recover at 100%, consent-bound at ~52%,
+funds-bound at 0–51%.
 
 **"Is this production-ready?"** No, and the README says so in a section called
 Honest limitations. It's a working prototype that proves a mechanism against real
