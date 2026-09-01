@@ -3,7 +3,7 @@
 **Revenue recovery for agent-driven checkout.**
 Razorpay AI Buildathon — Track 03, AI Revenue Recovery.
 
-[![tests](https://github.com/USERNAME/handshake/actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
+[![tests](https://github.com/YOURNAME/handshake/actions/workflows/ci.yml/badge.svg)](../../actions/workflows/ci.yml)
 
 AI agents now buy on people's behalf. They abandon checkout far more often than
 humans, and for different reasons: a product field was missing, two variants were
