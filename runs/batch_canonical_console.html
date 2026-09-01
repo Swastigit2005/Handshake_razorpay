@@ -1,0 +1,244 @@
+<title>Handshake Batch Console</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Serif:wght@400;500;600&display=swap">
+<style>
+:root{--paper:#F3F5F2;--surface:#FFF;--sunk:#EAEEE9;--ink:#131C18;--soft:#4A5751;
+--faint:#6B7873;--rule:#D5DDD7;--rule2:#E4EAE5;--accent:#126B47;--accent-soft:#E2EFE7;
+--signal:#A8412A;--signal-soft:#F6E7E2;--warn:#8A6414;--warn-soft:#F5EEDC;
+--fd:"IBM Plex Sans Condensed",Arial,sans-serif;--fb:"IBM Plex Serif",Georgia,serif;
+--fm:"IBM Plex Mono",ui-monospace,Menlo,monospace;}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--paper:#0E1512;
+--surface:#151E1A;--sunk:#111A16;--ink:#E2E9E4;--soft:#A8B5AE;--faint:#7F8D86;
+--rule:#26332C;--rule2:#1D2823;--accent:#57B385;--accent-soft:#14291F;
+--signal:#DE7A5E;--signal-soft:#2B1B15;--warn:#D0A64A;--warn-soft:#29220F;}}
+:root[data-theme="dark"]{--paper:#0E1512;--surface:#151E1A;--sunk:#111A16;--ink:#E2E9E4;
+--soft:#A8B5AE;--faint:#7F8D86;--rule:#26332C;--rule2:#1D2823;--accent:#57B385;
+--accent-soft:#14291F;--signal:#DE7A5E;--signal-soft:#2B1B15;--warn:#D0A64A;--warn-soft:#29220F;}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--fb);font-size:15px;
+line-height:1.55;margin:0;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:36px 28px 96px}
+.eyebrow{font-family:var(--fm);font-size:10px;letter-spacing:.13em;text-transform:uppercase;
+color:var(--accent);margin:0 0 10px}
+h1{font-family:var(--fd);font-size:38px;font-weight:700;letter-spacing:-.02em;margin:0 0 6px;
+line-height:1.05}
+.sub{font-family:var(--fm);font-size:11.5px;color:var(--faint);letter-spacing:.02em;margin:0}
+h2{font-family:var(--fd);font-size:20px;font-weight:700;letter-spacing:-.01em;margin:44px 0 12px;
+padding-bottom:7px;border-bottom:1.5px solid var(--ink)}
+h3{font-family:var(--fm);font-size:10px;letter-spacing:.11em;text-transform:uppercase;
+color:var(--faint);margin:26px 0 8px;font-weight:600}
+p{margin:0 0 12px;max-width:68ch}
+.banner{border-left:3px solid var(--warn);background:var(--warn-soft);padding:12px 16px;
+margin:22px 0 0;font-size:14px}
+.banner b{font-weight:600}
+.banner ul{margin:6px 0 0;padding-left:18px}
+.banner li{margin:2px 0}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:1px;
+background:var(--rule);border:1px solid var(--rule);margin:26px 0 0}
+.kpi{background:var(--surface);padding:16px 18px;display:flex;flex-direction:column;gap:5px}
+.kpi .k{font-family:var(--fm);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+color:var(--faint)}
+.kpi .v{font-family:var(--fd);font-size:27px;font-weight:700;letter-spacing:-.02em;
+font-variant-numeric:tabular-nums;line-height:1.05}
+.kpi .n{font-family:var(--fm);font-size:10.5px;color:var(--soft)}
+.kpi.good .v{color:var(--accent)}
+.tw{overflow-x:auto;border-top:1.5px solid var(--ink);border-bottom:1px solid var(--rule);
+margin:0 0 18px}
+table{border-collapse:collapse;width:100%;font-family:var(--fd);font-size:13.5px}
+th{text-align:left;font-family:var(--fm);font-size:9.5px;letter-spacing:.09em;
+text-transform:uppercase;color:var(--faint);font-weight:500;padding:9px 14px 9px 0;
+border-bottom:1px solid var(--rule);white-space:nowrap;vertical-align:bottom}
+td{padding:9px 14px 9px 0;border-bottom:1px solid var(--rule2);vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+td.n{font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+th.n{text-align:right}
+.id{font-family:var(--fm);font-size:11.5px;color:var(--accent);white-space:nowrap}
+.bar{display:block;height:9px;background:var(--sunk);border-radius:0;position:relative;
+min-width:120px}
+.bar i{display:block;height:9px;background:var(--accent);border-radius:0 2px 2px 0}
+.lab{font-family:var(--fm);font-size:10.5px;color:var(--soft);
+font-variant-numeric:tabular-nums;padding-left:8px}
+.barcell{display:flex;align-items:center;gap:0;min-width:190px}
+.chain{border:1px solid var(--rule);background:var(--surface);padding:0;margin:0 0 18px}
+.entry{border-bottom:1px solid var(--rule2);padding:13px 16px}
+.entry:last-child{border-bottom:none}
+.entry .top{display:flex;justify-content:space-between;gap:14px;align-items:baseline;
+flex-wrap:wrap;margin-bottom:5px}
+.entry .actor{font-family:var(--fd);font-weight:600;font-size:14px}
+.entry .hash{font-family:var(--fm);font-size:9.5px;color:var(--faint)}
+.chk{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.chk span{font-family:var(--fm);font-size:9.5px;padding:2px 6px;border:1px solid var(--rule);
+background:var(--sunk);color:var(--soft)}
+.chk span.fail{border-color:var(--signal);color:var(--signal);background:var(--signal-soft)}
+pre{font-family:var(--fm);font-size:11px;line-height:1.6;background:var(--sunk);
+border:1px solid var(--rule2);padding:10px 12px;overflow-x:auto;margin:6px 0 0}
+.note{border-left:3px solid var(--accent);background:var(--accent-soft);padding:12px 16px;
+margin:0 0 18px;font-size:14px;max-width:68ch}
+footer{margin-top:56px;padding-top:16px;border-top:1px solid var(--rule);
+font-family:var(--fm);font-size:10.5px;color:var(--faint);line-height:1.8}
+</style>
+<div class="wrap">
+<p class="eyebrow">Batch report · Razorpay AI Buildathon · Track 03</p>
+<h1>Handshake</h1>
+<p class="sub">500 sessions &nbsp;·&nbsp; seed 20260830 &nbsp;·&nbsp; payments=sim &nbsp;·&nbsp; buyers=heuristic</p>
+<div class="kpis">
+<div class="kpi"><span class="k">At-risk GMV</span><span class="v">₹490,502</span><span class="n">104 failed sessions</span></div>
+<div class="kpi good"><span class="k">Recovered GMV</span><span class="v">₹350,019</span><span class="n">71.4% of at-risk</span></div>
+<div class="kpi good"><span class="k">Lift over control</span><span class="v">67.3 pts</span><span class="n">control recovered 4.1%</span></div>
+<div class="kpi"><span class="k">Concession ratio</span><span class="v">1.47%</span><span class="n">₹5,139 of margin given up</span></div>
+<div class="kpi"><span class="k">Net recovery</span><span class="v">₹71,509</span><span class="n">margin − concession − action cost</span></div>
+</div>
+<div class="banner"><b>Simulated in this run.</b><ul><li>payments (local simulator, no Razorpay call)</li><li>buyer agents (deterministic decision policy, not an LLM)</li><li>delegated spending caps (Reserve Pay not available to developers)</li><li>catalogue, mandates and buyers (synthetic)</li></ul></div>
+<h2>Treatment against control</h2>
+<p>Allocation is randomised at session creation and stratified by injected fault, so both arms carry the same failure mix. The control arm is fully instrumented and receives no intervention; what it recovers, buyers recovered by themselves.</p>
+<div class="tw"><table><thead><tr><th>Measure</th><th class="n">Treatment</th><th class="n">Control</th></tr></thead><tbody>
+<tr><td>Sessions</td><td class="n">246</td><td class="n">254</td></tr>
+<tr><td>Failed</td><td class="n">104</td><td class="n">110</td></tr>
+<tr><td>At-risk GMV</td><td class="n">₹490,502</td><td class="n">₹470,222</td></tr>
+<tr><td>Recovered GMV</td><td class="n">₹350,019</td><td class="n">₹19,199</td></tr>
+<tr><td>Recovery rate</td><td class="n">71.36%</td><td class="n">4.08%</td></tr>
+<tr><td>Concession cost</td><td class="n">₹5,139</td><td class="n">₹0</td></tr>
+<tr><td>Concession ratio</td><td class="n">1.47%</td><td class="n">0.00%</td></tr>
+<tr><td>Interventions executed</td><td class="n">89</td><td class="n">6</td></tr>
+<tr><td>Net recovery</td><td class="n">₹71,509</td><td class="n">₹4,200</td></tr>
+</tbody></table></div>
+<h2>Recovery by root cause</h2>
+<p>Bars show recovered GMV as a share of the GMV at risk in that class. The spread is the finding: data defects recover almost completely, consent-bound and funds-bound failures do not.</p>
+<div class="tw"><table><thead><tr><th>Cause</th><th>Class</th><th class="n">Failed</th><th class="n">At-risk</th><th class="n">Recovered</th><th>Recovery of at-risk GMV</th></tr></thead><tbody>
+<tr><td class="id">A4</td><td>reserve ceiling</td><td class="n">17</td><td class="n">₹118,283</td><td class="n">₹60,569</td><td><div class="barcell"><span class="bar"><i style="width:51.2%"></i></span><span class="lab">51%</span></div></td></tr>
+<tr><td class="id">A5</td><td>human auth wall</td><td class="n">11</td><td class="n">₹74,128</td><td class="n">₹49,489</td><td><div class="barcell"><span class="bar"><i style="width:66.8%"></i></span><span class="lab">67%</span></div></td></tr>
+<tr><td class="id">A3</td><td>quote drift</td><td class="n">13</td><td class="n">₹62,622</td><td class="n">₹41,201</td><td><div class="barcell"><span class="bar"><i style="width:65.8%"></i></span><span class="lab">66%</span></div></td></tr>
+<tr><td class="id">A1</td><td>attribute void</td><td class="n">17</td><td class="n">₹61,242</td><td class="n">₹61,242</td><td><div class="barcell"><span class="bar"><i style="width:100.0%"></i></span><span class="lab">100%</span></div></td></tr>
+<tr><td class="id">A2</td><td>spec ambiguity</td><td class="n">7</td><td class="n">₹33,618</td><td class="n">₹33,618</td><td><div class="barcell"><span class="bar"><i style="width:100.0%"></i></span><span class="lab">100%</span></div></td></tr>
+<tr><td class="id">UNKNOWN</td><td>unclassified</td><td class="n">10</td><td class="n">₹30,680</td><td class="n">₹0</td><td><div class="barcell"><span class="bar"><i style="width:0.0%"></i></span><span class="lab">0%</span></div></td></tr>
+<tr><td class="id">A8</td><td>fulfilment mismatch</td><td class="n">8</td><td class="n">₹27,105</td><td class="n">₹27,105</td><td><div class="barcell"><span class="bar"><i style="width:100.0%"></i></span><span class="lab">100%</span></div></td></tr>
+<tr><td class="id">A6</td><td>ambiguous error</td><td class="n">8</td><td class="n">₹26,656</td><td class="n">₹26,656</td><td><div class="barcell"><span class="bar"><i style="width:100.0%"></i></span><span class="lab">100%</span></div></td></tr>
+<tr><td class="id">B1</td><td>insufficient balance</td><td class="n">5</td><td class="n">₹16,638</td><td class="n">₹14,974</td><td><div class="barcell"><span class="bar"><i style="width:90.0%"></i></span><span class="lab">90%</span></div></td></tr>
+<tr><td class="id">B5</td><td>instrument decline</td><td class="n">2</td><td class="n">₹14,797</td><td class="n">₹14,797</td><td><div class="barcell"><span class="bar"><i style="width:100.0%"></i></span><span class="lab">100%</span></div></td></tr>
+<tr><td class="id">B2</td><td>issuer downtime</td><td class="n">2</td><td class="n">₹10,738</td><td class="n">₹10,738</td><td><div class="barcell"><span class="bar"><i style="width:100.0%"></i></span><span class="lab">100%</span></div></td></tr>
+<tr><td class="id">A7</td><td>policy unreadable</td><td class="n">3</td><td class="n">₹9,629</td><td class="n">₹9,629</td><td><div class="barcell"><span class="bar"><i style="width:100.0%"></i></span><span class="lab">100%</span></div></td></tr>
+<tr><td class="id">B3</td><td>mandate invalid</td><td class="n">1</td><td class="n">₹4,366</td><td class="n">₹0</td><td><div class="barcell"><span class="bar"><i style="width:0.0%"></i></span><span class="lab">0%</span></div></td></tr>
+</tbody></table></div>
+<h2>Diagnosis accuracy</h2>
+<p>Scored against the injected fault, which the engine never reads. Macro-F1 <b>0.936</b> across 214 labelled sessions. 14 sessions were left unclassified: where a rail returns a decline with no usable reason code, the engine refuses to guess and rule R-10 stops any action.</p>
+<div class="tw"><table><thead><tr><th>Cause</th><th>Class</th><th class="n">Support</th><th class="n">Precision</th><th class="n">Recall</th><th class="n">F1</th></tr></thead><tbody>
+<tr><td class="id">A1</td><td>attribute void</td><td class="n">35</td><td class="n">1.00</td><td class="n">1.00</td><td class="n">1.00</td></tr>
+<tr><td class="id">A2</td><td>spec ambiguity</td><td class="n">14</td><td class="n">1.00</td><td class="n">1.00</td><td class="n">1.00</td></tr>
+<tr><td class="id">A3</td><td>quote drift</td><td class="n">26</td><td class="n">1.00</td><td class="n">1.00</td><td class="n">1.00</td></tr>
+<tr><td class="id">A4</td><td>reserve ceiling</td><td class="n">34</td><td class="n">1.00</td><td class="n">1.00</td><td class="n">1.00</td></tr>
+<tr><td class="id">A5</td><td>human auth wall</td><td class="n">22</td><td class="n">1.00</td><td class="n">1.00</td><td class="n">1.00</td></tr>
+<tr><td class="id">A6</td><td>ambiguous error</td><td class="n">17</td><td class="n">1.00</td><td class="n">1.00</td><td class="n">1.00</td></tr>
+<tr><td class="id">A7</td><td>policy unreadable</td><td class="n">5</td><td class="n">1.00</td><td class="n">1.00</td><td class="n">1.00</td></tr>
+<tr><td class="id">A8</td><td>fulfilment mismatch</td><td class="n">17</td><td class="n">1.00</td><td class="n">1.00</td><td class="n">1.00</td></tr>
+<tr><td class="id">B1</td><td>insufficient balance</td><td class="n">17</td><td class="n">1.00</td><td class="n">0.77</td><td class="n">0.87</td></tr>
+<tr><td class="id">B2</td><td>issuer downtime</td><td class="n">10</td><td class="n">1.00</td><td class="n">0.60</td><td class="n">0.75</td></tr>
+<tr><td class="id">B3</td><td>mandate invalid</td><td class="n">7</td><td class="n">1.00</td><td class="n">0.71</td><td class="n">0.83</td></tr>
+<tr><td class="id">B4</td><td>reserve exhausted</td><td class="n">1</td><td class="n">1.00</td><td class="n">1.00</td><td class="n">1.00</td></tr>
+<tr><td class="id">B5</td><td>instrument decline</td><td class="n">9</td><td class="n">1.00</td><td class="n">0.56</td><td class="n">0.71</td></tr>
+</tbody></table></div>
+<h2>What the gate refused</h2>
+<p>Refusals are recorded with the same standing as permits. They are the evidence that the policy engine exists and that an LLM never had the last word on money.</p>
+<div class="tw"><table><thead><tr><th>Rule</th><th>What it stops</th><th class="n">Times fired</th></tr></thead><tbody>
+<tr><td class="id">R-04</td><td>cumulative concession ceiling (margin floor)</td><td class="n">5</td></tr>
+<tr><td class="id">R-09</td><td>quiet hours on any human-facing escalation</td><td class="n">3</td></tr>
+<tr><td class="id">R-10</td><td>diagnosis confidence below threshold routes to exceptions</td><td class="n">10</td></tr>
+</tbody></table></div>
+<p class="sub">Not observed refusing in this batch: R-01, R-02, R-03, R-05, R-06, R-07, R-08, R-11 — each is covered by a unit test instead.</p>
+<h2>Exceptions we could not resolve</h2>
+<p>22 sessions ended without recovery. The full list ships with the run; the largest by value are shown here.</p>
+<div class="tw"><table><thead><tr><th>Session</th><th>Cause</th><th class="n">At risk</th><th>Why it stopped</th></tr></thead><tbody>
+<tr><td class="id">sess_00242</td><td class="id">A5</td><td class="n">₹13,912</td><td>R-09: no permitted intervention remains for this cause</td></tr>
+<tr><td class="id">sess_00416</td><td class="id">UNKNOWN</td><td class="n">₹8,319</td><td>R-10: diagnosis below confidence threshold</td></tr>
+<tr><td class="id">sess_00353</td><td class="id">UNKNOWN</td><td class="n">₹7,741</td><td>R-10: diagnosis below confidence threshold</td></tr>
+<tr><td class="id">sess_00379</td><td class="id">A3</td><td class="n">₹6,054</td><td>R-04: no permitted intervention remains for this cause</td></tr>
+<tr><td class="id">sess_00026</td><td class="id">A5</td><td class="n">₹6,053</td><td>R-09: no permitted intervention remains for this cause</td></tr>
+<tr><td class="id">sess_00413</td><td class="id">A3</td><td class="n">₹5,294</td><td>R-04: no permitted intervention remains for this cause</td></tr>
+<tr><td class="id">sess_00283</td><td class="id">A3</td><td class="n">₹4,490</td><td>R-04: no permitted intervention remains for this cause</td></tr>
+<tr><td class="id">sess_00386</td><td class="id">A3</td><td class="n">₹4,490</td><td>R-04: no permitted intervention remains for this cause</td></tr>
+<tr><td class="id">sess_00179</td><td class="id">UNKNOWN</td><td class="n">₹4,413</td><td>R-10: diagnosis below confidence threshold</td></tr>
+<tr><td class="id">sess_00299</td><td class="id">B3</td><td class="n">₹4,366</td><td>principal declined the request</td></tr>
+<tr><td class="id">sess_00468</td><td class="id">UNKNOWN</td><td class="n">₹4,366</td><td>R-10: diagnosis below confidence threshold</td></tr>
+<tr><td class="id">sess_00063</td><td class="id">A5</td><td class="n">₹2,974</td><td>principal declined the request</td></tr>
+</tbody></table></div>
+<h2>Audit trail for one recovery</h2>
+<p>Session <span class="id">sess_00337</span>, ₹14,797 at risk, recovered at ₹14,797 via I-06. Every rule evaluated is recorded, including the ones that passed.</p>
+<div class="chain">
+<div class="entry"><div class="top"><span class="actor">recorder — terminal failure detected</span><span class="hash">prev 1f94429bae → 781d489237</span></div>
+<pre>{
+  &quot;trigger&quot;: {
+    &quot;type&quot;: &quot;terminal_failure&quot;,
+    &quot;at_risk_value&quot;: 14797.2,
+    &quot;currency&quot;: &quot;INR&quot;
+  }
+}</pre>
+</div>
+<div class="entry"><div class="top"><span class="actor">diagnosis engine — cause assigned</span><span class="hash">prev 781d489237 → b23c86534f</span></div>
+<pre>{
+  &quot;diagnosis&quot;: {
+    &quot;session_id&quot;: &quot;sess_00337&quot;,
+    &quot;cause&quot;: &quot;A5&quot;,
+    &quot;confidence&quot;: 1.0,
+    &quot;method&quot;: &quot;rule&quot;,
+    &quot;evidence&quot;: [
+      &quot;ev_5&quot;
+    ],
+    &quot;detail&quot;: {}
+  }
+}</pre>
+</div>
+<div class="entry"><div class="top"><span class="actor">intervention executor — action executed</span><span class="hash">prev b23c86534f → bf833b597a</span></div>
+<pre>{
+  &quot;diagnosis&quot;: {
+    &quot;session_id&quot;: &quot;sess_00337&quot;,
+    &quot;cause&quot;: &quot;A5&quot;,
+    &quot;confidence&quot;: 1.0,
+    &quot;method&quot;: &quot;rule&quot;,
+    &quot;evidence&quot;: [
+      &quot;ev_5&quot;
+    ],
+    &quot;detail&quot;: {}
+  },
+  &quot;outcome&quot;: {
+    &quot;intervention&quot;: &quot;I-06&quot;,
+    &quot;ok&quot;: true,
+    &quot;note&quot;: &quot;single-use approval link issued to the principal&quot;,
+    &quot;concession&quot;: 0.0,
+    &quot;offer&quot;: {
+      &quot;intervention&quot;: &quot;I-06&quot;,
+      &quot;expires_in_minutes&quot;: 15,
+      &quot;single_use&quot;: true
+    }
+  },
+  &quot;reversal&quot;: {
+    &quot;method&quot;: &quot;token_expiry&quot;,
+    &quot;window_minutes&quot;: 15
+  }
+}</pre>
+<div class="chk">
+<span>R-11 off · pass</span>
+<span>R-10 1.00 vs 0.70 · pass</span>
+<span>R-03 none · pass</span>
+<span>R-01 0/2 · pass</span>
+<span>R-02 0/3 · pass</span>
+<span>R-06 2 abandonments · pass</span>
+<span>R-09 hour 17 · pass</span>
+<span>R-05 EV 1464.92 vs cost 25.00 · pass</span>
+<span>R-07 no cap raised without consent · pass</span>
+</div>
+</div>
+<div class="entry"><div class="top"><span class="actor">recorder — recovery confirmed</span><span class="hash">prev bf833b597a → b9270d3784</span></div>
+<pre>{
+  &quot;outcome&quot;: {
+    &quot;state&quot;: &quot;converted&quot;,
+    &quot;value&quot;: 14797.2,
+    &quot;ref&quot;: &quot;pay_sim_79e3d1cac28d&quot;
+  },
+  &quot;reversal&quot;: {
+    &quot;method&quot;: &quot;refund&quot;,
+    &quot;window_hours&quot;: 24
+  }
+}</pre>
+</div>
+</div>
+<div class="note">Hash chain over the whole batch: <b>verified</b> across 627 entries.</div>
+<footer>Handshake — recovery layer for agent-driven checkout · Razorpay AI Buildathon 2026, Track 03<br>All payment integrations run in test mode. Figures are from the batch named above and reproduce exactly from its seed.</footer>
+</div>

@@ -1,5 +1,15 @@
-# Core runtime has no third-party dependencies: the default batch runs on the
-# Python standard library alone.
-pytest>=8.0          # tests
-razorpay>=1.4        # only needed when HS_PAYMENTS=razorpay
-anthropic>=0.40      # only needed when HS_BUYERS=llm (or use openai instead)
+# The batch runner, the scan and their tests need nothing beyond the standard
+# library. Everything below is optional and grouped by what it unlocks.
+
+# Live console (./run_ui.sh, docker compose up)
+fastapi>=0.110
+uvicorn[standard]>=0.27
+
+# Tests
+pytest>=8.0
+httpx>=0.27          # only for the HTTP tests
+
+# Live backends, only when you switch them on
+razorpay>=1.4        # HS_PAYMENTS=razorpay
+openai>=1.40         # HS_BUYERS=llm (OpenAI, Groq, any OpenAI-compatible endpoint)
+anthropic>=0.40      # HS_BUYERS=llm (Anthropic keys)

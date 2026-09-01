@@ -1,0 +1,29 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: install
+        run: pip install ".[console,dev]"
+      - name: tests
+        run: python -m pytest handshake/tests -q
+      - name: a batch must run end to end
+        run: python -m handshake.experiments.run --sessions 120 --tag ci
+      - name: a readiness scan must run end to end
+        run: python -m handshake.readiness.run --sessions 120 --tag ci
+      - name: no credentials in the tree
+        run: python pre_push_check.py

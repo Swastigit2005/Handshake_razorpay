@@ -1,0 +1,544 @@
+[
+  {
+    "session_id": "sess_00026",
+    "buyer_id": "buyer_0026",
+    "persona": "strict",
+    "arm": "treatment",
+    "injected_fault": "A5",
+    "diagnosed_cause": "A5",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 6053.4,
+    "at_risk_value": 6053.4,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-09",
+        "reason": "no permitted intervention remains for this cause"
+      }
+    ],
+    "exception": "R-09: no permitted intervention remains for this cause",
+    "abandon_note": "completion refused, authentication required"
+  },
+  {
+    "session_id": "sess_00063",
+    "buyer_id": "buyer_0063",
+    "persona": "balanced",
+    "arm": "treatment",
+    "injected_fault": "A5",
+    "diagnosed_cause": "A5",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 2973.6,
+    "at_risk_value": 2973.6,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [
+      "I-06"
+    ],
+    "refusals": [],
+    "exception": "principal declined the request",
+    "abandon_note": "completion refused, authentication required"
+  },
+  {
+    "session_id": "sess_00085",
+    "buyer_id": "buyer_0085",
+    "persona": "balanced",
+    "arm": "treatment",
+    "injected_fault": "B2",
+    "diagnosed_cause": "UNKNOWN",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 1144.6,
+    "at_risk_value": 1144.6,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-10",
+        "reason": "diagnosis below confidence threshold"
+      }
+    ],
+    "exception": "R-10: diagnosis below confidence threshold",
+    "abandon_note": "payment attempt failed"
+  },
+  {
+    "session_id": "sess_00093",
+    "buyer_id": "buyer_0093",
+    "persona": "balanced",
+    "arm": "treatment",
+    "injected_fault": "B1",
+    "diagnosed_cause": "B1",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 1663.8,
+    "at_risk_value": 1663.8,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [
+      "I-09"
+    ],
+    "refusals": [
+      {
+        "rule": "R-09",
+        "reason": "no permitted intervention remains for this cause"
+      }
+    ],
+    "exception": "R-09: no permitted intervention remains for this cause",
+    "abandon_note": "payment attempt failed"
+  },
+  {
+    "session_id": "sess_00109",
+    "buyer_id": "buyer_0109",
+    "persona": "permissive",
+    "arm": "treatment",
+    "injected_fault": "B5",
+    "diagnosed_cause": "UNKNOWN",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 247.8,
+    "at_risk_value": 247.8,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-10",
+        "reason": "diagnosis below confidence threshold"
+      }
+    ],
+    "exception": "R-10: diagnosis below confidence threshold",
+    "abandon_note": "payment attempt failed"
+  },
+  {
+    "session_id": "sess_00130",
+    "buyer_id": "buyer_0005",
+    "persona": "strict",
+    "arm": "treatment",
+    "injected_fault": "B3",
+    "diagnosed_cause": "UNKNOWN",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 1109.2,
+    "at_risk_value": 1109.2,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-10",
+        "reason": "diagnosis below confidence threshold"
+      }
+    ],
+    "exception": "R-10: diagnosis below confidence threshold",
+    "abandon_note": "payment attempt failed"
+  },
+  {
+    "session_id": "sess_00179",
+    "buyer_id": "buyer_0054",
+    "persona": "permissive",
+    "arm": "treatment",
+    "injected_fault": "B1",
+    "diagnosed_cause": "UNKNOWN",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 4413.2,
+    "at_risk_value": 4413.2,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-10",
+        "reason": "diagnosis below confidence threshold"
+      }
+    ],
+    "exception": "R-10: diagnosis below confidence threshold",
+    "abandon_note": "payment attempt failed"
+  },
+  {
+    "session_id": "sess_00187",
+    "buyer_id": "buyer_0062",
+    "persona": "permissive",
+    "arm": "treatment",
+    "injected_fault": "A5",
+    "diagnosed_cause": "A5",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 967.6,
+    "at_risk_value": 967.6,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [
+      "I-06"
+    ],
+    "refusals": [],
+    "exception": "principal declined the request",
+    "abandon_note": "completion refused, authentication required"
+  },
+  {
+    "session_id": "sess_00213",
+    "buyer_id": "buyer_0088",
+    "persona": "permissive",
+    "arm": "treatment",
+    "injected_fault": "A5",
+    "diagnosed_cause": "A5",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 731.6,
+    "at_risk_value": 731.6,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [
+      "I-06"
+    ],
+    "refusals": [],
+    "exception": "principal declined the request",
+    "abandon_note": "completion refused, authentication required"
+  },
+  {
+    "session_id": "sess_00242",
+    "buyer_id": "buyer_0117",
+    "persona": "balanced",
+    "arm": "treatment",
+    "injected_fault": "A5",
+    "diagnosed_cause": "A5",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 13912.2,
+    "at_risk_value": 13912.2,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-09",
+        "reason": "no permitted intervention remains for this cause"
+      }
+    ],
+    "exception": "R-09: no permitted intervention remains for this cause",
+    "abandon_note": "completion refused, authentication required"
+  },
+  {
+    "session_id": "sess_00283",
+    "buyer_id": "buyer_0033",
+    "persona": "balanced",
+    "arm": "treatment",
+    "injected_fault": "A3",
+    "diagnosed_cause": "A3",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 4490.37,
+    "at_risk_value": 4490.37,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-04",
+        "reason": "no permitted intervention remains for this cause"
+      }
+    ],
+    "exception": "R-04: no permitted intervention remains for this cause",
+    "abandon_note": "session updated then left open"
+  },
+  {
+    "session_id": "sess_00299",
+    "buyer_id": "buyer_0049",
+    "persona": "balanced",
+    "arm": "treatment",
+    "injected_fault": "B3",
+    "diagnosed_cause": "B3",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 4366.0,
+    "at_risk_value": 4366.0,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [
+      "I-06"
+    ],
+    "refusals": [],
+    "exception": "principal declined the request",
+    "abandon_note": "payment attempt failed"
+  },
+  {
+    "session_id": "sess_00353",
+    "buyer_id": "buyer_0103",
+    "persona": "strict",
+    "arm": "treatment",
+    "injected_fault": "B2",
+    "diagnosed_cause": "UNKNOWN",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 7740.8,
+    "at_risk_value": 7740.8,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-10",
+        "reason": "diagnosis below confidence threshold"
+      }
+    ],
+    "exception": "R-10: diagnosis below confidence threshold",
+    "abandon_note": "payment attempt failed"
+  },
+  {
+    "session_id": "sess_00379",
+    "buyer_id": "buyer_0004",
+    "persona": "strict",
+    "arm": "treatment",
+    "injected_fault": "A3",
+    "diagnosed_cause": "A3",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 6053.64,
+    "at_risk_value": 6053.64,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-04",
+        "reason": "no permitted intervention remains for this cause"
+      }
+    ],
+    "exception": "R-04: no permitted intervention remains for this cause",
+    "abandon_note": "session updated then left open"
+  },
+  {
+    "session_id": "sess_00386",
+    "buyer_id": "buyer_0011",
+    "persona": "strict",
+    "arm": "treatment",
+    "injected_fault": "A3",
+    "diagnosed_cause": "A3",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 4490.37,
+    "at_risk_value": 4490.37,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-04",
+        "reason": "no permitted intervention remains for this cause"
+      }
+    ],
+    "exception": "R-04: no permitted intervention remains for this cause",
+    "abandon_note": "session updated then left open"
+  },
+  {
+    "session_id": "sess_00397",
+    "buyer_id": "buyer_0022",
+    "persona": "strict",
+    "arm": "treatment",
+    "injected_fault": "B1",
+    "diagnosed_cause": "UNKNOWN",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 247.8,
+    "at_risk_value": 247.8,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-10",
+        "reason": "diagnosis below confidence threshold"
+      }
+    ],
+    "exception": "R-10: diagnosis below confidence threshold",
+    "abandon_note": "payment attempt failed"
+  },
+  {
+    "session_id": "sess_00413",
+    "buyer_id": "buyer_0038",
+    "persona": "strict",
+    "arm": "treatment",
+    "injected_fault": "A3",
+    "diagnosed_cause": "A3",
+    "confidence": 1.0,
+    "terminal_state": "CONVERTED",
+    "basket_value": 5293.6,
+    "at_risk_value": 0.0,
+    "converted_value": 5293.6,
+    "recovered": true,
+    "recovered_value": 5293.6,
+    "concession": 0.0,
+    "interventions": [
+      "none_buyer_self_recovery"
+    ],
+    "refusals": [
+      {
+        "rule": "R-04",
+        "reason": "no permitted intervention remains for this cause"
+      }
+    ],
+    "exception": "R-04: no permitted intervention remains for this cause",
+    "abandon_note": ""
+  },
+  {
+    "session_id": "sess_00416",
+    "buyer_id": "buyer_0041",
+    "persona": "strict",
+    "arm": "treatment",
+    "injected_fault": "B1",
+    "diagnosed_cause": "UNKNOWN",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 8319.0,
+    "at_risk_value": 8319.0,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-10",
+        "reason": "diagnosis below confidence threshold"
+      }
+    ],
+    "exception": "R-10: diagnosis below confidence threshold",
+    "abandon_note": "payment attempt failed"
+  },
+  {
+    "session_id": "sess_00430",
+    "buyer_id": "buyer_0055",
+    "persona": "strict",
+    "arm": "treatment",
+    "injected_fault": "B3",
+    "diagnosed_cause": "UNKNOWN",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 1144.6,
+    "at_risk_value": 1144.6,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-10",
+        "reason": "diagnosis below confidence threshold"
+      }
+    ],
+    "exception": "R-10: diagnosis below confidence threshold",
+    "abandon_note": "payment attempt failed"
+  },
+  {
+    "session_id": "sess_00460",
+    "buyer_id": "buyer_0085",
+    "persona": "balanced",
+    "arm": "treatment",
+    "injected_fault": "A3",
+    "diagnosed_cause": "A3",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 1247.61,
+    "at_risk_value": 1247.61,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-04",
+        "reason": "no permitted intervention remains for this cause"
+      }
+    ],
+    "exception": "R-04: no permitted intervention remains for this cause",
+    "abandon_note": "session updated then left open"
+  },
+  {
+    "session_id": "sess_00468",
+    "buyer_id": "buyer_0093",
+    "persona": "balanced",
+    "arm": "treatment",
+    "injected_fault": "B5",
+    "diagnosed_cause": "UNKNOWN",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 4366.0,
+    "at_risk_value": 4366.0,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-10",
+        "reason": "diagnosis below confidence threshold"
+      }
+    ],
+    "exception": "R-10: diagnosis below confidence threshold",
+    "abandon_note": "payment attempt failed"
+  },
+  {
+    "session_id": "sess_00477",
+    "buyer_id": "buyer_0102",
+    "persona": "balanced",
+    "arm": "treatment",
+    "injected_fault": "B2",
+    "diagnosed_cause": "UNKNOWN",
+    "confidence": 1.0,
+    "terminal_state": "FAILED",
+    "basket_value": 1947.0,
+    "at_risk_value": 1947.0,
+    "converted_value": 0.0,
+    "recovered": false,
+    "recovered_value": 0.0,
+    "concession": 0.0,
+    "interventions": [],
+    "refusals": [
+      {
+        "rule": "R-10",
+        "reason": "diagnosis below confidence threshold"
+      }
+    ],
+    "exception": "R-10: diagnosis below confidence threshold",
+    "abandon_note": "payment attempt failed"
+  }
+]

@@ -1,0 +1,271 @@
+{
+  "batch_size": 500,
+  "seed": 20260830,
+  "payments_backend": "sim",
+  "buyer_backend": "heuristic",
+  "arms": {
+    "treatment": {
+      "sessions": 246,
+      "converted_first_pass": 142,
+      "failed": 104,
+      "at_risk_gmv": 490501.8,
+      "recovered_gmv": 350018.8,
+      "recovery_rate": 0.7136,
+      "concession_cost": 5139.01,
+      "concession_ratio": 0.0147,
+      "interventions": 89,
+      "net_recovery": 71509.13
+    },
+    "control": {
+      "sessions": 254,
+      "converted_first_pass": 144,
+      "failed": 110,
+      "at_risk_gmv": 470222.34,
+      "recovered_gmv": 19198.6,
+      "recovery_rate": 0.0408,
+      "concession_cost": 0.0,
+      "concession_ratio": 0.0,
+      "interventions": 6,
+      "net_recovery": 4199.69
+    }
+  },
+  "lift_over_control": 0.6728,
+  "headline_recovered_gmv": 350018.8,
+  "headline_net_recovery": 71509.13,
+  "per_cause": {
+    "A4": {
+      "name": "reserve_ceiling",
+      "failed": 17,
+      "at_risk_gmv": 118283.2,
+      "recovered_gmv": 60569.4,
+      "recovery_rate": 0.5121,
+      "recovered_sessions": 17,
+      "concession": 0.0
+    },
+    "A5": {
+      "name": "human_auth_wall",
+      "failed": 11,
+      "at_risk_gmv": 74127.6,
+      "recovered_gmv": 49489.2,
+      "recovery_rate": 0.6676,
+      "recovered_sessions": 6,
+      "concession": 0.0
+    },
+    "A3": {
+      "name": "quote_drift",
+      "failed": 13,
+      "at_risk_gmv": 62622.0,
+      "recovered_gmv": 41201.0,
+      "recovery_rate": 0.6579,
+      "recovered_sessions": 9,
+      "concession": 5139.01
+    },
+    "A1": {
+      "name": "attribute_void",
+      "failed": 17,
+      "at_risk_gmv": 61242.0,
+      "recovered_gmv": 61242.0,
+      "recovery_rate": 1.0,
+      "recovered_sessions": 17,
+      "concession": 0.0
+    },
+    "A2": {
+      "name": "spec_ambiguity",
+      "failed": 7,
+      "at_risk_gmv": 33618.2,
+      "recovered_gmv": 33618.2,
+      "recovery_rate": 1.0,
+      "recovered_sessions": 7,
+      "concession": 0.0
+    },
+    "UNKNOWN": {
+      "name": "unclassified",
+      "failed": 10,
+      "at_risk_gmv": 30680.0,
+      "recovered_gmv": 0.0,
+      "recovery_rate": 0.0,
+      "recovered_sessions": 0,
+      "concession": 0.0
+    },
+    "A8": {
+      "name": "fulfilment_mismatch",
+      "failed": 8,
+      "at_risk_gmv": 27104.6,
+      "recovered_gmv": 27104.6,
+      "recovery_rate": 1.0,
+      "recovered_sessions": 8,
+      "concession": 0.0
+    },
+    "A6": {
+      "name": "ambiguous_error",
+      "failed": 8,
+      "at_risk_gmv": 26656.2,
+      "recovered_gmv": 26656.2,
+      "recovery_rate": 1.0,
+      "recovered_sessions": 8,
+      "concession": 0.0
+    },
+    "B1": {
+      "name": "insufficient_balance",
+      "failed": 5,
+      "at_risk_gmv": 16638.0,
+      "recovered_gmv": 14974.2,
+      "recovery_rate": 0.9,
+      "recovered_sessions": 4,
+      "concession": 0.0
+    },
+    "B5": {
+      "name": "instrument_decline",
+      "failed": 2,
+      "at_risk_gmv": 14797.2,
+      "recovered_gmv": 14797.2,
+      "recovery_rate": 1.0,
+      "recovered_sessions": 2,
+      "concession": 0.0
+    },
+    "B2": {
+      "name": "issuer_downtime",
+      "failed": 2,
+      "at_risk_gmv": 10738.0,
+      "recovered_gmv": 10738.0,
+      "recovery_rate": 1.0,
+      "recovered_sessions": 2,
+      "concession": 0.0
+    },
+    "A7": {
+      "name": "policy_unreadable",
+      "failed": 3,
+      "at_risk_gmv": 9628.8,
+      "recovered_gmv": 9628.8,
+      "recovery_rate": 1.0,
+      "recovered_sessions": 3,
+      "concession": 0.0
+    },
+    "B3": {
+      "name": "mandate_invalid",
+      "failed": 1,
+      "at_risk_gmv": 4366.0,
+      "recovered_gmv": 0.0,
+      "recovery_rate": 0.0,
+      "recovered_sessions": 0,
+      "concession": 0.0
+    }
+  },
+  "diagnosis": {
+    "scored_sessions": 214,
+    "macro_f1": 0.936,
+    "unclassified": 14,
+    "per_class": {
+      "A1": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 35
+      },
+      "A2": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 14
+      },
+      "A3": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 26
+      },
+      "A4": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 34
+      },
+      "A5": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 22
+      },
+      "A6": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 17
+      },
+      "A7": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 5
+      },
+      "A8": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 17
+      },
+      "B1": {
+        "precision": 1.0,
+        "recall": 0.765,
+        "f1": 0.867,
+        "support": 17
+      },
+      "B2": {
+        "precision": 1.0,
+        "recall": 0.6,
+        "f1": 0.75,
+        "support": 10
+      },
+      "B3": {
+        "precision": 1.0,
+        "recall": 0.714,
+        "f1": 0.833,
+        "support": 7
+      },
+      "B4": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 1
+      },
+      "B5": {
+        "precision": 1.0,
+        "recall": 0.556,
+        "f1": 0.714,
+        "support": 9
+      }
+    }
+  },
+  "policy_refusals": {
+    "R-04": 5,
+    "R-09": 3,
+    "R-10": 10
+  },
+  "rules_observed_firing": [
+    "R-04",
+    "R-09",
+    "R-10"
+  ],
+  "rules_not_observed": [
+    "R-01",
+    "R-02",
+    "R-03",
+    "R-05",
+    "R-06",
+    "R-07",
+    "R-08",
+    "R-11"
+  ],
+  "exception_count": 22,
+  "ledger": {
+    "entries": 627,
+    "hash_chain_valid": true,
+    "first_bad_entry": -1
+  },
+  "simulated_components": [
+    "payments (local simulator, no Razorpay call)",
+    "buyer agents (deterministic decision policy, not an LLM)",
+    "delegated spending caps (Reserve Pay not available to developers)",
+    "catalogue, mandates and buyers (synthetic)"
+  ]
+}

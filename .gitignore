@@ -1,13 +1,20 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
 
 # Secrets. Never commit these.
 .env
 .env.*
 !.env.example
 
-# Batch artefacts are regenerated. The canonical run is committed as evidence:
+# Local state and artefacts. The canonical run is committed as evidence.
+data/
 runs/*
 !runs/.gitkeep
 !runs/batch_canonical_*
+!runs/readiness_canonical*

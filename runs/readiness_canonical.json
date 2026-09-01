@@ -1,0 +1,380 @@
+{
+  "sessions": 300,
+  "seed": 20260830,
+  "buyers": "heuristic",
+  "listings": 51,
+  "readiness_score": 84.3,
+  "defects_found": [
+    {
+      "kind": "missing_attribute",
+      "sku": "LAP-000",
+      "field": "material",
+      "category": "laptop_accessories",
+      "detail": "required attribute material absent from the feed",
+      "severity": "blocks a strict or balanced buyer outright",
+      "advisory": false
+    },
+    {
+      "kind": "unserviceable",
+      "sku": "AUD-010",
+      "field": "serviceable_pincodes",
+      "category": "audio",
+      "detail": "no serviceable route stated",
+      "severity": "checkout session refused before it opens",
+      "advisory": false
+    },
+    {
+      "kind": "prose_policy",
+      "sku": "EVE-008",
+      "field": "policy",
+      "category": "everyday_small",
+      "detail": "returns and warranty are prose, not machine-readable fields",
+      "severity": "risk-averse buyer abandons rather than guess the terms",
+      "advisory": false
+    },
+    {
+      "kind": "unserviceable",
+      "sku": "EVE-010",
+      "field": "serviceable_pincodes",
+      "category": "everyday_small",
+      "detail": "no serviceable route stated",
+      "severity": "checkout session refused before it opens",
+      "advisory": false
+    },
+    {
+      "kind": "missing_attribute",
+      "sku": "HOM-004",
+      "field": "capacity_l",
+      "category": "home_kitchen",
+      "detail": "required attribute capacity_l absent from the feed",
+      "severity": "blocks a strict or balanced buyer outright",
+      "advisory": false
+    },
+    {
+      "kind": "variant_collision",
+      "sku": "LAP-011",
+      "field": "variant_group",
+      "category": "laptop_accessories",
+      "detail": "indistinguishable from LAP-011-B",
+      "severity": "buyer cannot choose between identical listings",
+      "advisory": false
+    },
+    {
+      "kind": "variant_collision",
+      "sku": "LAP-003",
+      "field": "variant_group",
+      "category": "laptop_accessories",
+      "detail": "indistinguishable from LAP-003-B",
+      "severity": "buyer cannot choose between identical listings",
+      "advisory": false
+    },
+    {
+      "kind": "variant_collision",
+      "sku": "LAP-007",
+      "field": "variant_group",
+      "category": "laptop_accessories",
+      "detail": "indistinguishable from LAP-007-B",
+      "severity": "buyer cannot choose between identical listings",
+      "advisory": false
+    }
+  ],
+  "advisories": [
+    {
+      "kind": "stale_stock",
+      "sku": "LAP-000",
+      "field": "stock",
+      "category": "laptop_accessories",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "LAP-003",
+      "field": "stock",
+      "category": "laptop_accessories",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "LAP-005",
+      "field": "stock",
+      "category": "laptop_accessories",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "LAP-008",
+      "field": "stock",
+      "category": "laptop_accessories",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "EVE-007",
+      "field": "stock",
+      "category": "everyday_small",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "EVE-009",
+      "field": "stock",
+      "category": "everyday_small",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "HOM-005",
+      "field": "stock",
+      "category": "home_kitchen",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "HOM-007",
+      "field": "stock",
+      "category": "home_kitchen",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "LAP-003-B",
+      "field": "stock",
+      "category": "laptop_accessories",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    }
+  ],
+  "defects_by_field": [
+    {
+      "skus": [
+        "LAP-011",
+        "LAP-003",
+        "LAP-007"
+      ],
+      "kind": "variant_collision",
+      "detail": "indistinguishable from LAP-007-B",
+      "field": "variant_group",
+      "category": "laptop_accessories",
+      "sku_count": 3
+    },
+    {
+      "skus": [
+        "LAP-000"
+      ],
+      "kind": "missing_attribute",
+      "detail": "required attribute material absent from the feed",
+      "field": "material",
+      "category": "laptop_accessories",
+      "sku_count": 1
+    },
+    {
+      "skus": [
+        "AUD-010"
+      ],
+      "kind": "unserviceable",
+      "detail": "no serviceable route stated",
+      "field": "serviceable_pincodes",
+      "category": "audio",
+      "sku_count": 1
+    },
+    {
+      "skus": [
+        "EVE-008"
+      ],
+      "kind": "prose_policy",
+      "detail": "returns and warranty are prose, not machine-readable fields",
+      "field": "policy",
+      "category": "everyday_small",
+      "sku_count": 1
+    },
+    {
+      "skus": [
+        "EVE-010"
+      ],
+      "kind": "unserviceable",
+      "detail": "no serviceable route stated",
+      "field": "serviceable_pincodes",
+      "category": "everyday_small",
+      "sku_count": 1
+    },
+    {
+      "skus": [
+        "HOM-004"
+      ],
+      "kind": "missing_attribute",
+      "detail": "required attribute capacity_l absent from the feed",
+      "field": "capacity_l",
+      "category": "home_kitchen",
+      "sku_count": 1
+    }
+  ],
+  "planted": 10,
+  "priced": [
+    {
+      "defect": "missing_attribute",
+      "field": "capacity_l",
+      "sessions": 9,
+      "at_risk": 63295.2,
+      "skus": [
+        "HOM-004"
+      ]
+    },
+    {
+      "defect": "unserviceable",
+      "field": "serviceable_pincodes",
+      "sessions": 12,
+      "at_risk": 47683.8,
+      "skus": [
+        "AUD-010",
+        "EVE-010"
+      ]
+    },
+    {
+      "defect": "variant_collision",
+      "field": "variant_group",
+      "sessions": 12,
+      "at_risk": 23788.8,
+      "skus": [
+        "LAP-007",
+        "LAP-007-B",
+        "LAP-011-B"
+      ]
+    },
+    {
+      "defect": "prose_policy",
+      "field": "policy",
+      "sessions": 2,
+      "at_risk": 1463.2,
+      "skus": [
+        "EVE-008"
+      ]
+    }
+  ],
+  "before": {
+    "converted": 265,
+    "failed": 35,
+    "revenue": 1134605.4,
+    "at_risk": 136231.0
+  },
+  "after": {
+    "converted": 297,
+    "failed": 3,
+    "revenue": 1258210.4,
+    "at_risk": 11186.4
+  },
+  "repaired_skus": [
+    "HOM-004",
+    "AUD-010",
+    "EVE-010",
+    "LAP-007",
+    "LAP-007-B",
+    "LAP-011-B",
+    "EVE-008"
+  ],
+  "delta": {
+    "sessions_recovered": 32,
+    "revenue_gained": 123605.0,
+    "at_risk_removed": 125044.6,
+    "per_1000_sessions": 412016.67
+  },
+  "unpriced": [
+    {
+      "kind": "stale_stock",
+      "sku": "LAP-000",
+      "field": "stock",
+      "category": "laptop_accessories",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "LAP-003",
+      "field": "stock",
+      "category": "laptop_accessories",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "LAP-005",
+      "field": "stock",
+      "category": "laptop_accessories",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "LAP-008",
+      "field": "stock",
+      "category": "laptop_accessories",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "EVE-007",
+      "field": "stock",
+      "category": "everyday_small",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "EVE-009",
+      "field": "stock",
+      "category": "everyday_small",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "HOM-005",
+      "field": "stock",
+      "category": "home_kitchen",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "HOM-007",
+      "field": "stock",
+      "category": "home_kitchen",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    },
+    {
+      "kind": "stale_stock",
+      "sku": "LAP-003-B",
+      "field": "stock",
+      "category": "laptop_accessories",
+      "detail": "out of stock \u2014 withheld from the feed, so it costs the impression rather than the basket",
+      "severity": "listed to an agent that cannot buy it",
+      "advisory": true
+    }
+  ]
+}

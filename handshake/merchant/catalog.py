@@ -101,3 +101,94 @@ def build_catalog(seed=20260830, n=48):
 
 def required_attributes(category):
     return list(CATEGORIES[category]["required"])
+
+
+# ---------------------------------------------------------------------------
+# Baked-in catalogue defects.
+#
+# The fault injector breaks one session at a time; these are permanent flaws in
+# the catalogue itself — the kind a real merchant's feed carries for months
+# without anyone noticing, because no human shopper ever needed the field.
+# The readiness scan exists to find and price them.
+# ---------------------------------------------------------------------------
+
+DEFECT_KINDS = ("missing_attribute", "prose_policy", "variant_collision",
+                "unserviceable", "stale_stock")
+
+
+def inject_defects(catalog, rate=0.22, seed=20260830):
+    """Return (catalog, defects). Deterministic for a seed.
+
+    A defect record is what the audit should be able to find by inspection,
+    and what the scan should be able to price in rupees."""
+    rng = random.Random(seed + 7)
+    catalog = [dict(p, attributes=dict(p["attributes"]),
+                    policy=dict(p["policy"]),
+                    fulfilment=dict(p["fulfilment"])) for p in catalog]
+    defects = []
+    extra = []
+
+    for product in catalog:
+        if rng.random() > rate:
+            continue
+        kind = rng.choice(DEFECT_KINDS)
+
+        if kind == "missing_attribute":
+            field = rng.choice(required_attributes(product["category"]))
+            if field in product["attributes"]:
+                product["attributes"].pop(field)
+                defects.append({"kind": kind, "sku": product["sku"],
+                                "field": field, "category": product["category"],
+                                "detail": f"required attribute {field} absent"})
+
+        elif kind == "prose_policy":
+            product["policy"] = {
+                "structured": False,
+                "prose": ("Returns accepted at the seller's discretion within a "
+                          "reasonable period subject to condition of goods."),
+            }
+            defects.append({"kind": kind, "sku": product["sku"], "field": "policy",
+                            "category": product["category"],
+                            "detail": "returns terms are prose, not fields"})
+
+        elif kind == "variant_collision":
+            twin = dict(product, sku=product["sku"] + "-B",
+                        attributes=dict(product["attributes"]),
+                        policy=dict(product["policy"]),
+                        fulfilment=dict(product["fulfilment"]))
+            extra.append(twin)
+            defects.append({"kind": kind, "sku": product["sku"],
+                            "field": "variant_group", "category": product["category"],
+                            "detail": f"indistinguishable from {twin['sku']}"})
+
+        elif kind == "unserviceable":
+            product["fulfilment"]["serviceable_pincodes"] = []
+            defects.append({"kind": kind, "sku": product["sku"],
+                            "field": "serviceable_pincodes",
+                            "category": product["category"],
+                            "detail": "no serviceable route stated"})
+
+        elif kind == "stale_stock":
+            product["stock"] = 0
+            defects.append({"kind": kind, "sku": product["sku"], "field": "stock",
+                            "category": product["category"],
+                            "detail": "listed but out of stock"})
+
+    return catalog + extra, defects
+
+
+def repair(catalog, source, skus):
+    """Restore the named SKUs from a clean source catalogue.
+
+    This is what a merchant does once, in their PIM, instead of recovering the
+    same failure session after session."""
+    by_sku = {p["sku"]: p for p in source}
+    fixed = []
+    for product in catalog:
+        origin = by_sku.get(product["sku"].replace("-B", ""))
+        if product["sku"] in skus and origin:
+            product = dict(origin, sku=product["sku"])
+        fixed.append(product)
+    # a collision is repaired by removing the duplicate listing
+    return [p for p in fixed
+            if not (p["sku"].endswith("-B") and p["sku"][:-2] in skus)]

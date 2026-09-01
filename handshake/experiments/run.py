@@ -20,9 +20,11 @@ from ..payments.adapter import build_backend, preflight
 from .batch import run_batch
 from .report import compute, render_text, save
 
-PKG = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ROOT = os.path.dirname(PKG)
-RUNS = os.path.join(ROOT, "runs")
+def _runs_dir():
+    """Artefacts belong beside the user, not inside site-packages."""
+    root = os.environ.get("HS_RUNS_DIR") or os.path.join(os.getcwd(), "runs")
+    os.makedirs(root, exist_ok=True)
+    return root
 
 
 class _probe_persona:
@@ -52,8 +54,7 @@ def main(argv=None):
     cfg.policy.kill_switch = args.kill_switch
 
     tag = args.tag or time.strftime("%Y%m%d-%H%M%S")
-    prefix = os.path.join(RUNS, f"batch_{tag}")
-    os.makedirs(RUNS, exist_ok=True)
+    prefix = os.path.join(_runs_dir(), f"batch_{tag}")
 
     def progress(done, total):
         print(f"  {done}/{total} sessions", file=sys.stderr)

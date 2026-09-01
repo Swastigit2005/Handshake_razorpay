@@ -1,0 +1,30 @@
+# One-click deploy on Render (Blueprint). The console runs offline and
+# reproducibly with no keys; add them as environment variables to switch the
+# live backends on.
+#
+# Free instances have an ephemeral filesystem, so the console imports the
+# canonical run committed in runs/ on every startup and re-verifies its hash
+# chain. Free instances also spin down after 15 minutes idle and take about a
+# minute to wake — point an uptime pinger at /healthz every 10 minutes if the
+# URL is going to a reviewer.
+services:
+  - type: web
+    name: handshake-console
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install ".[console]"
+    startCommand: python -m uvicorn handshake.server.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      - key: HS_PAYMENTS
+        value: sim
+      - key: HS_BUYERS
+        value: heuristic
+      - key: HS_DEMO_MODE
+        value: "1"
+      - key: HS_DB
+        value: /tmp/handshake.db

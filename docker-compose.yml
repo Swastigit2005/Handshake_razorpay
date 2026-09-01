@@ -1,0 +1,20 @@
+services:
+  console:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      # Offline and reproducible by default. No API keys needed.
+      HS_PAYMENTS: sim
+      HS_BUYERS: heuristic
+      HS_DEMO_MODE: 1
+      HS_DB: /app/data/handshake.db
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - handshake-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  handshake-data:
