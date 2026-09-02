@@ -370,7 +370,7 @@ footer .fl{display:flex;gap:20px;flex-wrap:wrap}
   <div class="shotwrap">
     <figure class="shot rv" style="margin-bottom:0">
       <img src="/assets/screens/console-recovery.png" width="1380" height="900"
-           alt="The Handshake console after a 200-session run, showing recovered revenue, the recovered-versus-lost split, and the resolved sessions listed individually.">
+           alt="The Handshake console after the 500-session reference run, showing recovered revenue, the recovered-versus-lost split, the method line naming the backends, and each shopping attempt listed with the product and the reason it stopped.">
     </figure>
     <p class="shotcap">The console after a live run &mdash; not a mock-up. Every figure on
     this page came out of it.</p>
