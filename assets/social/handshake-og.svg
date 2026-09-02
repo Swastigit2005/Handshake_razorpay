@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">Handshake — revenue recovery for agent-driven checkout</title>
+  <desc id="desc">A recovery rail turns a dead AI checkout session into verified recovered revenue.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#080D29"/>
+      <stop offset=".62" stop-color="#101B50"/>
+      <stop offset="1" stop-color="#080D29"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="78%" cy="19%" r="64%">
+      <stop offset="0" stop-color="#305EFF" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#305EFF" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="rail" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#F0263C"/>
+      <stop offset=".18" stop-color="#305EFF"/>
+      <stop offset=".78" stop-color="#305EFF"/>
+      <stop offset="1" stop-color="#48D08C"/>
+    </linearGradient>
+    <pattern id="grid" width="52" height="52" patternUnits="userSpaceOnUse">
+      <path d="M52 0H0v52" fill="none" stroke="#B4CDFD" stroke-opacity=".075"/>
+    </pattern>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="22" stdDeviation="24" flood-color="#000" flood-opacity=".44"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+
+  <!-- Identity -->
+  <g transform="translate(70 58)">
+    <rect width="38" height="38" rx="8" fill="#152040" stroke="#B4CDFD" stroke-opacity=".28"/>
+    <path d="M13 10v18m0-18h5a4 4 0 0 1 0 8h-5" fill="none" stroke="#305EFF" stroke-linecap="round" stroke-width="3"/>
+    <path d="M25 28V10m0 18h-5a4 4 0 0 1 0-8h5" fill="none" stroke="#48D08C" stroke-linecap="round" stroke-width="3"/>
+    <text x="52" y="27" fill="#FFF" font-family="Inter Tight, Arial, sans-serif" font-size="25" font-weight="700">Handshake</text>
+  </g>
+  <text x="1130" y="82" fill="#75A3FF" font-family="Fragment Mono, Menlo, monospace" font-size="13" text-anchor="end" letter-spacing="1.8">RAZORPAY AI BUILDATHON · TRACK 03</text>
+
+  <!-- Message -->
+  <text x="70" y="184" fill="#FFF" font-family="Inter Tight, Arial, sans-serif" font-size="58" font-weight="700" letter-spacing="-2.4">
+    <tspan x="70">You can’t email a bot</tspan>
+    <tspan x="70" dy="64">a coupon.</tspan>
+  </text>
+  <text x="70" y="326" fill="#B4CDFD" font-family="Inter Tight, Arial, sans-serif" font-size="22">
+    <tspan x="70">The recovery layer for the buyer you cannot reach.</tspan>
+  </text>
+
+  <!-- Recovery rail -->
+  <g transform="translate(70 382)" filter="url(#shadow)">
+    <rect width="1060" height="126" rx="18" fill="#0D1533" stroke="#B4CDFD" stroke-opacity=".2"/>
+    <path d="M82 63H977" fill="none" stroke="#26365F" stroke-width="3"/>
+    <path d="M82 63H977" fill="none" stroke="url(#rail)" stroke-width="3"/>
+    <g font-family="Fragment Mono, Menlo, monospace" font-size="11" letter-spacing="1">
+      <g transform="translate(82 63)"><circle r="11" fill="#F0263C"/><circle r="4" fill="#FFF"/><text x="0" y="39" fill="#FF9AA4" text-anchor="middle">DEAD SESSION</text></g>
+      <g transform="translate(260 63)"><circle r="11" fill="#305EFF"/><circle r="4" fill="#FFF"/><text x="0" y="39" fill="#B4CDFD" text-anchor="middle">DIAGNOSE</text></g>
+      <g transform="translate(438 63)"><circle r="11" fill="#305EFF"/><circle r="4" fill="#FFF"/><text x="0" y="39" fill="#B4CDFD" text-anchor="middle">DECIDE</text></g>
+      <g transform="translate(616 63)"><circle r="14" fill="#080D29" stroke="#75A3FF" stroke-width="3"/><path d="M-5 0h10" stroke="#75A3FF" stroke-width="2"/><text x="0" y="42" fill="#75A3FF" text-anchor="middle">11-RULE GATE</text></g>
+      <g transform="translate(794 63)"><circle r="11" fill="#305EFF"/><circle r="4" fill="#FFF"/><text x="0" y="39" fill="#B4CDFD" text-anchor="middle">RE-OFFER</text></g>
+      <g transform="translate(977 63)"><circle r="13" fill="#48D08C"/><path d="m-5 0 4 4 8-9" fill="none" stroke="#080D29" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/><text x="0" y="39" fill="#48D08C" text-anchor="middle">RECOVERED</text></g>
+    </g>
+  </g>
+
+  <!-- Proof -->
+  <g transform="translate(70 555)" font-family="Inter Tight, Arial, sans-serif">
+    <text fill="#48D08C" font-size="29" font-weight="700">₹3,50,019</text>
+    <text x="154" y="-2" fill="#768EA7" font-family="Fragment Mono, Menlo, monospace" font-size="11" letter-spacing="1">RECOVERED GMV</text>
+    <path d="M345-26v42" stroke="#B4CDFD" stroke-opacity=".2"/>
+    <text x="380" fill="#FFF" font-size="29" font-weight="700">67.3 pts</text>
+    <text x="505" y="-2" fill="#768EA7" font-family="Fragment Mono, Menlo, monospace" font-size="11" letter-spacing="1">LIFT OVER CONTROL</text>
+    <path d="M730-26v42" stroke="#B4CDFD" stroke-opacity=".2"/>
+    <text x="766" fill="#FFF" font-size="29" font-weight="700">0.936</text>
+    <text x="856" y="-2" fill="#768EA7" font-family="Fragment Mono, Menlo, monospace" font-size="11" letter-spacing="1">DIAGNOSIS MACRO-F1</text>
+  </g>
+</svg>

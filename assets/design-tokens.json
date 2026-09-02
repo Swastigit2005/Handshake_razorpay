@@ -1,0 +1,65 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "brand": "Handshake — Controlled Momentum",
+  "primitive": {
+    "color": {
+      "blue": {
+        "500": { "$value": "#305EFF", "$type": "color" },
+        "600": { "$value": "#2950DA", "$type": "color" },
+        "300": { "$value": "#75A3FF", "$type": "color" },
+        "100": { "$value": "#E9F0FF", "$type": "color" }
+      },
+      "navy": {
+        "900": { "$value": "#080D29", "$type": "color" },
+        "800": { "$value": "#0D1533", "$type": "color" },
+        "700": { "$value": "#152040", "$type": "color" }
+      },
+      "green": {
+        "500": { "$value": "#48D08C", "$type": "color" },
+        "600": { "$value": "#009E5C", "$type": "color" },
+        "100": { "$value": "#E8F8F0", "$type": "color" }
+      },
+      "red": {
+        "500": { "$value": "#F0263C", "$type": "color" },
+        "100": { "$value": "#FFECEE", "$type": "color" }
+      },
+      "amber": {
+        "500": { "$value": "#FF8C1A", "$type": "color" },
+        "100": { "$value": "#FFF3E6", "$type": "color" }
+      },
+      "neutral": {
+        "0": { "$value": "#FFFFFF", "$type": "color" },
+        "50": { "$value": "#F8FAFC", "$type": "color" },
+        "100": { "$value": "#F1F5FA", "$type": "color" },
+        "300": { "$value": "#DFE3E9", "$type": "color" },
+        "500": { "$value": "#768EA7", "$type": "color" },
+        "600": { "$value": "#596F88", "$type": "color" },
+        "700": { "$value": "#40566D", "$type": "color" },
+        "800": { "$value": "#192839", "$type": "color" }
+      }
+    }
+  },
+  "semantic": {
+    "color": {
+      "primary": { "$value": "{primitive.color.blue.500}", "$type": "color" },
+      "primary-hover": { "$value": "{primitive.color.blue.600}", "$type": "color" },
+      "background-dark": { "$value": "{primitive.color.navy.900}", "$type": "color" },
+      "background-light": { "$value": "{primitive.color.neutral.50}", "$type": "color" },
+      "surface": { "$value": "{primitive.color.neutral.0}", "$type": "color" },
+      "text": { "$value": "{primitive.color.neutral.800}", "$type": "color" },
+      "text-muted": { "$value": "{primitive.color.neutral.600}", "$type": "color" },
+      "success": { "$value": "{primitive.color.green.500}", "$type": "color" },
+      "error": { "$value": "{primitive.color.red.500}", "$type": "color" },
+      "warning": { "$value": "{primitive.color.amber.500}", "$type": "color" }
+    }
+  },
+  "component": {
+    "button": {
+      "radius": { "$value": "9999px", "$type": "dimension" },
+      "height": { "$value": "44px", "$type": "dimension" }
+    },
+    "card": {
+      "radius": { "$value": "16px", "$type": "dimension" }
+    }
+  }
+}

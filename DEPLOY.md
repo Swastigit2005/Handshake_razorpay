@@ -32,7 +32,7 @@ so it can see your repositories).
 One command, about four minutes. It must end with all of:
 
 ```
-== tests ==                57 passed
+== tests ==                58 passed
 == recovery batch ==       recovered GMV 350018.8 | lift over control 0.6728
 == readiness scan ==       readiness 84.3%, +Rs 123,605
 == kill switch (R-11) ==   46 refusals
@@ -48,7 +48,8 @@ run use `./run.sh 500`, and `python3 preflight.py` to check the keys themselves.
 Then look at the console once:
 
 ```bash
-./run_ui.sh          # http://127.0.0.1:8000
+./run_ui.sh          # landing: http://127.0.0.1:8000
+                     # console: http://127.0.0.1:8000/console
 ```
 
 ---
@@ -87,7 +88,7 @@ account password: github.com → Settings → Developer settings → Personal ac
 tokens → Tokens (classic) → Generate, scope `repo`.
 
 The Actions tab starts a run immediately. It installs on Python 3.9, 3.11 and
-3.12, runs the 57 tests, runs a real batch and a real scan, and fails the build
+3.12, runs the 58 tests, runs a real batch and a real scan, and fails the build
 if a credential is found in the tree. Wait for the green tick before you submit
 the link — the badge in the README is what a reviewer glances at first.
 
@@ -164,11 +165,13 @@ import worked.
 
 Then in a browser:
 
-1. **Overview** — the canonical headline figures, labelled *canonical (committed)*
-2. **Recovery** → *Run batch* (200 sessions) → watch the causes and refusals fill
+1. **Landing page** — read the problem, mechanism, measured results and limitations;
+   then choose **Open the live console**
+2. **Recovery** → *Run batch* (200 sessions) → watch the three headline outcomes
+   and live sessions; expand **Advanced evidence** for causes and refusals
 3. Click any failed session → the drawer shows the merchant-observable API trace,
    the diagnosis, the policy verdict and the audit-chain entries for that session
-4. **Prevention** → *Run scan* → the before/after table and the rupee delta
+4. **Prevention** → *Scan catalogue* → the before/after proof and revenue delta
 5. Flip the **kill switch** mid-batch → R-11 refusals appear, the money stops
 6. **History** → open the stored run → the chain re-verifies out of SQLite
 

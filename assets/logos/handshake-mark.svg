@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-labelledby="title">
+  <title id="title">Handshake mark</title>
+  <rect width="32" height="32" rx="7" fill="#080D29"/>
+  <path d="M11 9v14M11 9h4a3.5 3.5 0 0 1 0 7h-4" fill="none" stroke="#305EFF" stroke-linecap="round" stroke-width="2.6"/>
+  <path d="M21 23V9M21 23h-4a3.5 3.5 0 0 1 0-7h4" fill="none" stroke="#48D08C" stroke-linecap="round" stroke-width="2.6"/>
+</svg>

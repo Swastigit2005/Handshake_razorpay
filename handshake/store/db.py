@@ -145,7 +145,13 @@ def _headline(kind, summary):
     arms = summary.get("arms", {})
     treatment = arms.get("treatment", {})
     return {"recovered": treatment.get("recovered_gmv"),
+            # at_risk lets a cold visitor see the recovered/lost split without
+            # loading the whole run.
+            "at_risk": treatment.get("at_risk_gmv"),
+            "failed": treatment.get("failed"),
+            "recovery_rate": treatment.get("recovery_rate"),
             "lift": summary.get("lift_over_control"),
+            "control_rate": (arms.get("control") or {}).get("recovery_rate"),
             "concession_ratio": treatment.get("concession_ratio"),
             "macro_f1": (summary.get("diagnosis") or {}).get("macro_f1")}
 

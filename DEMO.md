@@ -1,6 +1,6 @@
 # The five-minute video
 
-Everything below is clickable in the console. No slides, no mock-ups. Total
+Everything below is clickable in the application. No slides, no mock-ups. Total
 runtime 4:50, which leaves ten seconds of headroom.
 
 ## Before you record
@@ -11,17 +11,18 @@ thing they can open themselves.
     https://handshake-console.onrender.com
 
 ```bash
-./verify.sh          # locally, once: 57 tests, the batch, the scan, the chain
+./verify.sh          # locally, once: 58 tests, the batch, the scan, the chain
 ```
 
 Then, in the browser:
 
 1. Load the URL once and leave it loaded — the free instance sleeps after 15
    minutes and takes about a minute to wake. Never record a cold start.
-2. Confirm the **Overview** tab reads the canonical committed figures:
-   ₹3,50,019 recovered · 67.3 pts lift · readiness 84.3%. If it shows a smaller
-   number, you ran a demo batch and the Overview is now showing *that* run —
-   either say so on camera or redeploy to reset it.
+2. Start on the landing page for the opening line, then choose **Open the live
+   console**. Before recording, confirm the landing-page result cards read the
+   canonical committed figures: ₹3,50,019 recovered · 67.3 pts lift · readiness
+   84.3%. If they show a smaller number, you ran a demo batch and the landing page
+   is now showing *that* run — either say so on camera or redeploy to reset it.
 3. Dismiss the Chrome default-browser banner, hide the bookmarks bar
    (`Cmd+Shift+B`), close any video-call PIP window, go full screen.
 4. Pick one theme and stay in it.
@@ -38,18 +39,19 @@ other. Say that out loud rather than hiding it.
 
 ## Beat sheet
 
-### 0:00–0:20 · The number, first
-**On screen:** Overview tab, already loaded.
+### 0:00–0:20 · The problem and the number
+**On screen:** Landing-page hero. Read the headline and the measured result ribbon.
 
-> "Five hundred agent-driven checkout sessions. Three and a half lakh rupees of
-> basket value recovered that would otherwise have been lost, at a cost of a
-> fifth of one percent of margin. Here's why that number exists."
+> "You can't email a bot a coupon. Five hundred agent-driven checkout sessions.
+> Three and a half lakh rupees of
+> basket value recovered that would otherwise have been lost, while surrendering
+> 1.47% of the amount recovered in concessions. Here's why that number exists."
 
 Do not explain the product yet. Lead with the result.
 
 ### 0:20–1:00 · The problem
-**On screen:** stay on Overview, read the lead paragraph, then scroll to the
-"What is real here" note.
+**On screen:** stay on the landing page and scroll through the problem, recovery
+visual and seven-stage mechanism.
 
 > "AI agents now buy on people's behalf — Amazon Rufus auto-buys on price
 > thresholds, Perplexity checks out in chat, and Razorpay and NPCI have Claude

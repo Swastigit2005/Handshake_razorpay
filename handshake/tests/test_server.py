@@ -52,12 +52,32 @@ def test_healthz_reports_backends_and_store(client):
     assert "runs" in body["store"]
 
 
-def test_index_serves_the_console(client):
+def test_index_serves_the_landing_page_and_console(client):
     c, _ = client
-    page = c.get("/").text
-    assert "<title>" in page and "Handshake" in page
-    # the page must not depend on a build step or an external script host
-    assert "<script src=" not in page
+    landing = c.get("/").text
+    console = c.get("/console").text
+    assert "You can&rsquo;t email" in landing
+    # Assert on structure, not on marketing copy: the console shell, its page
+    # heading target and the drawer must exist. Prose is expected to change.
+    assert 'id="ptitle"' in console
+    assert 'class="rail"' in console
+    assert 'id="drawer"' in console
+    assert 'data-tab="recovery"' in console
+    assert 'data-tab="prevention"' in console
+    assert 'data-tab="history"' in console
+    assert 'data-tab="overview"' not in console
+    assert 'data-tab="how"' not in console
+    # Neither surface depends on a JavaScript build step or script CDN.
+    assert "<script src=" not in landing
+    assert "<script src=" not in console
+
+
+def test_social_preview_asset_is_served(client):
+    c, _ = client
+    preview = c.get("/assets/social/handshake-og.png")
+    assert preview.status_code == 200
+    assert preview.headers["content-type"] == "image/png"
+    assert len(preview.content) > 100_000
 
 
 # ---------------- a batch, end to end over HTTP ----------------
@@ -177,6 +197,7 @@ def test_overview_serves_stored_headlines(client):
     _wait(c)
     body = c.get("/api/overview").json()
     assert body["batch"] and body["batch"]["headline"]["recovered"] > 0
+    assert body["batch"]["headline"]["recovery_rate"] > 0
 
 
 # ---------------- cold-start seeding ----------------

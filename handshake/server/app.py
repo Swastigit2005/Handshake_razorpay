@@ -20,9 +20,11 @@ import threading
 import time
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Header
 from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .. import __version__
@@ -32,6 +34,7 @@ from ..experiments.report import compute
 from ..readiness.scan import scan as run_scan
 from ..store import db, seed
 from ..taxonomy import CAUSES, RULES
+from .landing import LANDING
 from .ui import PAGE
 
 SEED_REPORT = {}
@@ -56,6 +59,19 @@ async def lifespan(_app):
 app = FastAPI(title="Handshake", version=__version__,
               description="Revenue recovery for agent-driven checkout",
               lifespan=lifespan)
+
+# Brand assets are checked into the repository and immutable at runtime. Resolve
+# from this file rather than the process cwd so Docker, Render and local runs all
+# serve the same URLs.
+ASSET_DIR = Path(__file__).resolve().parents[2] / "assets"
+if ASSET_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=ASSET_DIR), name="assets")
+else:
+    # StaticFiles raises at import when the directory is absent, which would take
+    # the whole console down over a missing social-preview image. Installed as a
+    # wheel and run from elsewhere, this path does not exist. Serve without the
+    # brand assets instead, and say so in /healthz.
+    ASSET_DIR = None
 
 DEMO_MODE = os.environ.get("HS_DEMO_MODE", "").lower() in ("1", "true", "yes")
 API_TOKEN = os.environ.get("HS_API_TOKEN", "")
@@ -331,6 +347,7 @@ def healthz():
                      "buyers": RunConfig().buyer_backend},
         "busy": STATE.running or STATE.scanning,
         "store": store,
+        "assets": bool(ASSET_DIR),
         "seed": SEED_REPORT,
     }, status_code=200 if healthy else 503)
 
@@ -456,4 +473,12 @@ def stored_chain(run_id: str, session_id: str = ""):
 
 @app.get("/", response_class=HTMLResponse)
 def index():
+    """The landing page. A stranger should understand the problem, see the
+    mechanism and read the honest limitations before they touch a control."""
+    return LANDING
+
+
+@app.get("/console", response_class=HTMLResponse)
+def console():
+    """The live operator console — the thing the landing page sends you to."""
     return PAGE

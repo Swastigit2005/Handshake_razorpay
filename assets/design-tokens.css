@@ -1,0 +1,30 @@
+:root {
+  --hs-blue: #305eff;
+  --hs-blue-hover: #2950da;
+  --hs-blue-light: #75a3ff;
+  --hs-blue-wash: #e9f0ff;
+  --hs-navy: #080d29;
+  --hs-navy-raised: #0d1533;
+  --hs-navy-surface: #152040;
+  --hs-green: #48d08c;
+  --hs-green-dark: #009e5c;
+  --hs-red: #f0263c;
+  --hs-amber: #ff8c1a;
+  --hs-paper: #ffffff;
+  --hs-canvas: #f8fafc;
+  --hs-recessed: #f1f5fa;
+  --hs-ink: #192839;
+  --hs-ink-soft: #40566d;
+  --hs-ink-muted: #596f88;
+  --hs-rail-slate: #768ea7;
+  --hs-rule: #dfe3e9;
+  --hs-font-sans: "Inter Tight", system-ui, -apple-system, sans-serif;
+  --hs-font-display: "Space Grotesk", "Inter Tight", system-ui, sans-serif;
+  --hs-font-mono: "Fragment Mono", ui-monospace, monospace;
+  --hs-radius-control: 9999px;
+  --hs-radius-card: 16px;
+  --hs-motion-fast: 180ms;
+  --hs-motion-standard: 260ms;
+  --hs-motion-explain: 700ms;
+  --hs-ease: cubic-bezier(.22, .75, .28, 1);
+}

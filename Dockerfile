@@ -14,6 +14,7 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY handshake ./handshake
+COPY assets ./assets
 
 RUN pip install --upgrade pip && pip install ".[console,live,dev]"
 

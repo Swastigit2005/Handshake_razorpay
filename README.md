@@ -32,13 +32,14 @@ deterministic decision policy.
 
 ```bash
 pip install ".[console,dev]"
-./run_ui.sh                                    # console at http://127.0.0.1:8000
+./run_ui.sh                                    # landing at http://127.0.0.1:8000
+                                               # console at http://127.0.0.1:8000/console
 ```
 
 **Docker**
 
 ```bash
-docker compose up                              # console at http://127.0.0.1:8000
+docker compose up                              # landing at http://127.0.0.1:8000
 ```
 
 **Anything else**
@@ -105,16 +106,16 @@ only for a single service.
 
 ## The console
 
-Five tabs, and everything in them is live — no slides, no mock-ups.
-
-**Overview** hydrates from the last stored run, so a cold visitor sees real
-figures before pressing anything.
+The public landing page carries the product overview, mechanism, measured
+results and limitations. The merchant-side console stays focused on three live
+work areas — no slides, no mock-ups.
 
 **Recovery** streams a batch as it happens: sessions appear as they resolve, the
-money view climbs, the cause table sorts by rupees at risk, and every refusal the
-gate makes is listed with its binding rule. **Click any session** and a drawer
-opens with the raw API traffic the merchant actually saw, the diagnosis, and the
-hash-chained audit entries.
+money view climbs, and three headline figures show the outcome at a glance.
+Root-cause, policy-refusal and diagnosis tables remain available under
+**Advanced evidence**. **Click any session** and a drawer opens with the raw API
+traffic the merchant actually saw, the diagnosis, and the hash-chained audit
+entries.
 
 **Walkthrough** runs six sessions at about a second a step so one recovery can be
 narrated. Every session is forced into the treatment arm, so there is no control
@@ -137,6 +138,10 @@ refusals start appearing while the money view stops moving.
 
 `python3 -m handshake.experiments.run --sessions 500 --seed 20260830`
 with `HS_PAYMENTS=razorpay` and `HS_BUYERS=llm`.
+
+The **deployed console shows the scripted-buyer run** two tables down, not this
+one: a public URL carries no keys and burns no model quota. Both runs are here,
+and they agree within three points.
 
 | | treatment | control |
 |---|---:|---:|
@@ -359,7 +364,7 @@ handshake/
 ├── readiness/             audit, price and prove catalogue repairs
 ├── store/                 SQLite persistence
 ├── experiments/           batch runner, allocation, metrics, CLI
-└── tests/                 57 tests: every rule, the chain, the pool, the API
+└── tests/                 58 tests: every rule, the chain, the pool, the API
 ```
 
 `DEMO.md` is the five-minute video script, beat by beat, with the exact clicks.
