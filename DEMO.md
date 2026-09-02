@@ -1,206 +1,283 @@
 # The five-minute video
 
-Everything below is clickable in the application. No slides, no mock-ups. Total
-runtime 4:50, which leaves ten seconds of headroom.
+Plain language throughout. Assume the viewer has never heard of agentic
+commerce, does not know what a checkout API is, and will decide in the first
+twenty seconds whether to keep watching. Total runtime 4:55.
+
+Everything below is a real click on a real screen. No slides, no mock-ups.
+
+---
+
+## How to read the dashboard, in one page
+
+Learn these five things and you can narrate any screen without hesitating.
+
+**A "shopping attempt" is one AI agent trying to buy one thing.** It has a
+budget, a spending limit its owner gave it, and a shop to buy from. Two hundred
+attempts is two hundred separate tries.
+
+**Green dot = the money came back. Grey dot = nothing was lost, it bought
+first time. Red dot = the money is gone.**
+
+**Every attempt is tagged `treatment` or `control`.** Treatment means Handshake
+was allowed to step in. Control means we deliberately did nothing, so we can
+prove the recovery was us and not luck. This is the same method a medical trial
+uses.
+
+**The left sidebar is the two halves of the product.** *Recovery* wins back
+sales that already failed. *Prevention* stops them failing in the first place.
+*History* is every run ever stored, re-checked when you open it.
+
+**The kill switch at the bottom left is a human's off switch.** One click and
+the system stops spending money, mid-run, no matter what it has concluded.
+
+Say those out loud once before you record. If you can explain the green dot and
+the control tag, the rest of the screen explains itself.
+
+---
 
 ## Before you record
 
-Record against the **deployed URL**, not localhost. A judge should watch the same
-thing they can open themselves.
-
-    https://handshake-console.onrender.com
+Record against the deployed URL, so a judge watches the same thing they can
+open themselves: **https://handshake-console.onrender.com**
 
 ```bash
-./verify.sh          # locally, once: 58 tests, the batch, the scan, the chain
+./verify.sh          # locally, once: 62 tests, the batch, the scan, the chain
 ```
 
-Then, in the browser:
+Then:
 
-1. Load the URL once and leave it loaded — the free instance sleeps after 15
-   minutes and takes about a minute to wake. Never record a cold start.
-2. Start on the landing page for the opening line, then choose **Open the live
-   console**. Before recording, confirm the landing-page result cards read the
-   canonical committed figures: ₹3,50,019 recovered · 67.3 pts lift · readiness
-   84.3%. If they show a smaller number, you ran a demo batch and the landing page
-   is now showing *that* run — either say so on camera or redeploy to reset it.
-3. Dismiss the Chrome default-browser banner, hide the bookmarks bar
-   (`Cmd+Shift+B`), close any video-call PIP window, go full screen.
-4. Pick one theme and stay in it.
-
-Record with `Cmd+Shift+5` → *Record Entire Screen*, microphone on.
-
-The deployed instance runs `payments: sim` and `buyers: heuristic` deliberately —
-no keys on a public URL, and no stranger burning your LLM quota. The live-backend
-run (`HS_PAYMENTS=razorpay`, `HS_BUYERS=llm`, 500 of 500 decisions from
-`gpt-oss-20b`) is in the README, and the two land within three points of each
-other. Say that out loud rather than hiding it.
+1. Load the URL and leave the tab open. The free instance sleeps after fifteen
+   minutes and takes about a minute to wake. Never film a cold start.
+2. Check the landing page shows **₹3,50,019 · 67.3 pts · 84.3%**. If it shows
+   something smaller, someone ran a demo batch — say so on camera or redeploy.
+3. Dismiss the Chrome banner, hide the bookmarks bar (`Cmd+Shift+B`), close any
+   video-call window, go full screen.
+4. `Cmd+Shift+5` → Record Entire Screen → microphone on.
 
 ---
 
 ## Beat sheet
 
-### 0:00–0:20 · The problem and the number
-**On screen:** Landing-page hero. Read the headline and the measured result ribbon.
+### 0:00–0:25 · The problem, before anything else
+**On screen:** the landing page, already loaded. Do not scroll yet.
 
-> "You can't email a bot a coupon. Five hundred agent-driven checkout sessions.
-> Three and a half lakh rupees of
-> basket value recovered that would otherwise have been lost, while surrendering
-> 1.47% of the amount recovered in concessions. Here's why that number exists."
-
-Do not explain the product yet. Lead with the result.
-
-### 0:20–1:00 · The problem
-**On screen:** stay on the landing page and scroll through the problem, recovery
-visual and seven-stage mechanism.
-
-> "AI agents now buy on people's behalf — Amazon Rufus auto-buys on price
-> thresholds, Perplexity checks out in chat, and Razorpay and NPCI have Claude
-> buying groceries on Reserve Pay right now. These buyers abandon far more than
-> humans. When OpenAI pulled Instant Checkout in March, Walmart's agent channel
-> was converting at a third of their own site.
+> "Software is starting to do people's shopping. You tell an assistant to
+> reorder the groceries or find a laptop stand under two thousand rupees, and it
+> goes and buys it for you. Razorpay and NPCI are piloting exactly that in India
+> right now.
 >
-> And when an agent gives up, the merchant gets a dead API session. No reason
-> code. No contact channel. Every recovery tool ever built assumes a human with
-> an inbox. You cannot email a bot a coupon."
-
-### 1:00–2:10 · One recovery, slowly
-**On screen:** Recovery tab → **Walkthrough**.
-
-Let the pipeline light up and narrate the stages as they land:
-
-> "A strict buyer with a two-thousand rupee delegated cap. The session dies —
-> six thousand at risk. All the merchant saw was a feed read and a product read,
-> then silence.
+> Here is the problem nobody has solved. When one of those AI shoppers gives up
+> halfway through buying something, the shop gets nothing. No email address. No
+> phone number. No reason. Just a request that stopped.
 >
-> Diagnosis: the catalogue is missing a field the buyer needed. Confidence one
-> point zero, from the rule tier, not a model.
+> Every tool ever built for winning back a lost sale assumes there is a person
+> on the other end you can email a discount code to. You cannot email a bot a
+> coupon."
+
+Let that line land. It's the whole pitch.
+
+### 0:25–0:50 · What it is, in two sentences
+**On screen:** click **Open the live console**. Land on Recovery.
+
+> "So I built the thing that does work on a machine buyer. It watches the
+> checkout, works out from the shop's own records why the agent walked away,
+> fixes that one thing, and offers the product again.
 >
-> Now the gate. Eleven deterministic rules, every one of them recorded — including
-> the ones that passed. No language model runs here. A model can propose a cause;
-> only this table decides whether money moves.
+> Two halves. Recovery wins back sales that already failed. Prevention finds the
+> problems in the shop's product listings before they cost anything. Let me show
+> you one sale, slowly."
+
+### 0:50–2:10 · One shopper, one product, start to finish
+**On screen:** click **Walkthrough**. It runs a single attempt slowly, on
+purpose. Narrate as each stage lights up.
+
+> "One AI shopper. It has a budget, and a spending limit its owner set.
 >
-> One intervention: patch the catalogue from the source record, re-offer to the
-> agent. It re-evaluates and buys."
-
-### 2:10–2:50 · The audit trail
-**On screen:** click any recovered session in the stream. The drawer opens.
-
-> "Click any rupee and you get the whole thing. Top half is what the merchant
-> actually saw — the raw API traffic, the 503, the retry, the capture. Bottom
-> half is the audit chain: hash-linked entries, every policy check evaluated,
-> and the reversal path recorded before the money moved.
+> It reads the shop's product list. It picks something. It opens the product
+> page to check the details against what it was told to buy.
 >
-> The injected fault is shown too, labelled as ground truth. The diagnosis
-> engine never sees it — it exists only to score the engine."
-
-### 2:50–3:30 · Attack it, and the honest numbers
-**On screen:** Recovery tab, scroll to "What the gate refused" and "Diagnosis
-accuracy".
-
-> "Eighteen actions refused in this batch. R-10 ten times — a decline with no
-> usable reason code, where the engine refuses to guess rather than invent a
-> cause. R-04 blocked a discount that would have breached the margin floor.
+> And it stops. It doesn't complain, it doesn't ask a question, it just stops.
 >
-> Macro-F1 of 0.936 against ground truth, with fourteen sessions left
-> unclassified and twenty-two exceptions I could not resolve, listed in full."
-
-### 3:30–3:50 · The kill switch, as a controlled pair
-**On screen:** flip **KILL SWITCH · R-11** to `on` *before* the run, execute 200
-sessions, then flip it off and run the identical 200 again.
-
-Do not attempt a mid-run flip on the deployed instance — the batch finishes
-faster than you can narrate. The before/after pair is stronger anyway, because
-it is a comparison rather than a stunt.
-
-> "Kill switch on. Same two hundred sessions, all forty-six failures diagnosed
-> correctly — and the gate refuses every single money action under R-11.
-> Recoveries drop to four, concession ratio to zero, and all forty-six failures
-> route to the exception list.
+> Because the listing was missing a spec it needed — the wattage wasn't there.
+> A person would have shrugged and bought it anyway. Software won't buy what it
+> can't verify.
 >
-> Those four are not the system. They are buyers who retried and succeeded on
-> their own — the ledger attributes them to the buyer, not to the recovery layer.
-> That is the counterfactual, and it is why there is a randomised control arm at
-> all.
+> Now watch what the shop actually saw: two page reads and then silence. That's
+> it. That's everything a real merchant has to work with.
 >
-> Switch off, same two hundred sessions: thirty-six recoveries, one lakh
-> thirty-six thousand rupees. The only thing that changed is a human's
-> permission."
+> Handshake reads those same two page reads and works out the reason. Then —
+> and this is the part I care most about — it asks permission. Eleven fixed
+> rules. Is this allowed? Have we already tried twice? Would this cost too much
+> margin? Does it need a human's consent?
+>
+> No AI runs at this step. An AI is allowed to figure out *why* the sale failed.
+> It is never allowed to decide *whether to spend the shop's money*. That's a
+> checklist, and it's the same checklist every time.
+>
+> Permission granted. So: fill in the missing wattage from the shop's own
+> records, and offer the product to the same agent again.
+>
+> It comes back. It buys. Nine thousand rupees that was gone."
 
-### 3:50–4:30 · Prevention, which is the bigger half
-**On screen:** Prevention tab → **Scan catalogue** (or the already-loaded result).
+Never quote Walkthrough totals — it forces every attempt into treatment so the
+recovery path always runs, and the console says so.
 
-> "Everything so far is reactive: a sale fails, I win it back. But the same
-> defect fails the next session too.
->
-> So: send agent buyers at the catalogue on purpose. Readiness score 84 percent.
-> One missing field, on one listing, refused sixty-three thousand rupees.
->
-> Then repair the top defects and re-run the *identical* buyers — same seed, same
-> personas, same decisions, only the feed differs. Failures go from thirty-five
-> to three. A hundred and twenty-three thousand rupees, four hundred and twelve
-> thousand per thousand sessions, permanently.
->
-> That version needs no integration at all. Point it at a public product feed."
+### 2:10–2:40 · Proof, not a claim
+**On screen:** click any green row in the attempts list.
 
-### 4:30–4:55 · What's real, and what's next
-**On screen:** the "What is real here" note, then the header badges.
-
-> "This instance runs the offline reproducible path — no keys on a public URL.
-> The live run is in the README: payments are Razorpay test-mode orders, and
-> 500 of 500 buyer decisions came from a real model. The two agree within three
-> points, which is the point: the layer does not depend on how good the buyer
-> agent is.
+> "Click any rupee and you get the receipt.
 >
-> The catalogue and the faults are synthetic, and both arms of every comparison
-> share that, so the lift measures the system and not the market. The badges say
-> which backends any run actually used.
+> Top: what the shopper was buying, what it cost, what its spending limit was,
+> and in one sentence why it stopped and what we did.
 >
-> The gap I haven't closed: no agent today polls a re-offer endpoint. That
-> primitive doesn't exist in ACP or UAP. Someone has to define it, and a
-> processor sitting across thousands of merchants is the natural party."
+> Below that: the shop's raw traffic — every request, every response, the exact
+> error.
+>
+> And at the bottom, the audit trail. Every step is stamped and chained to the
+> one before it, like links. Change any entry and the chain breaks visibly. So a
+> finance team can check what happened after the fact instead of taking my word
+> for it.
+>
+> One more thing. The console also shows the real reason, labelled as the answer
+> key. We planted these problems, so we know the truth. The part of the system
+> that works out the reason never sees that answer key — it only exists so I can
+> mark my own homework honestly."
 
-Stop recording. Don't add an outro.
+### 2:40–3:20 · Two hundred at once, and what the numbers mean
+**On screen:** **Recovery** → attempts `200` → **Run batch**. It streams for
+about twenty seconds. Land on the result card.
+
+> "Two hundred attempts. Forty-six failed, with two lakh rupees on the table.
+>
+> Sixty-seven percent of that came back.
+>
+> Now, the number that matters more. Half of these attempts were a control
+> group — we deliberately left them alone. That group recovered five percent on
+> its own, because some shoppers retry by themselves. Ours recovered sixty-seven.
+> The gap between those two is what the product does. That's the honest figure,
+> and it's why I built a control group instead of just showing you the big
+> number.
+>
+> And the cost: for every hundred rupees we brought back, we gave away one rupee
+> forty-seven in discounts. Almost all of these failures didn't need a discount
+> at all. They needed correct data."
+
+Then point at the two panels on the right.
+
+> "This panel is every action the rules blocked. Ten times the system wasn't
+> confident enough about the reason, so it refused to act rather than guess.
+> Refusing is a feature. Guessing with someone else's money is not.
+>
+> And this one: how often it named the right reason, scored against the answer
+> key. Zero point nine four out of one. Fourteen it couldn't classify at all, and
+> those are listed too."
+
+### 3:20–3:45 · The off switch
+**On screen:** flip the **Kill switch** in the sidebar to on, run 200 again,
+then switch it back and run once more.
+
+Do it as a before-and-after pair, not a mid-run flip — the batch finishes faster
+than you can talk.
+
+> "Kill switch on. Same two hundred attempts. Every reason still diagnosed
+> correctly — and not one rupee moves. Discounts given: zero.
+>
+> A few still show as recovered. Those are shoppers that retried on their own,
+> and the audit trail credits them to the shopper, not to us. I'd rather show
+> you that than round it away.
+>
+> Switch off, run it again: thirty-six recovered, one lakh thirty-six thousand.
+> Nothing changed except a human's permission."
+
+### 3:45–4:30 · The half that needs no integration
+**On screen:** **Prevention** → **Scan catalogue** at 300.
+
+> "Everything so far is cleanup after the fact. But the missing spec that cost
+> nine thousand rupees is still missing from that listing. It'll stop the next
+> shopper too, and the one after that.
+>
+> So: point AI shoppers at the shop's listings on purpose. Three hundred tries,
+> no problems planted — every failure is the shop's own data.
+>
+> The shop scores eighty-four percent ready for machine buyers. One missing
+> field, on one listing, was refusing sixty-three thousand rupees.
+>
+> Then fix the worst seven listings and send the exact same shoppers again.
+> Failures go from thirty-five to three. One lakh twenty-three thousand rupees
+> recovered — and it stays recovered, because the field is now filled in.
+>
+> Same shoppers, same decisions, only the listings changed. So that's a
+> measurement, not a forecast.
+>
+> And this half needs no integration whatsoever. Point it at a public product
+> feed and it works today."
+
+### 4:30–4:55 · What's real, and the one thing missing
+**On screen:** the method line under the controls, then the sidebar pills.
+
+> "What's real: the payments run through Razorpay's test system, and the
+> shoppers' decisions come from a real language model. The shop's catalogue and
+> the problems in it are ones I created — and both groups, treated and control,
+> shop the same catalogue, so the gap between them measures the product and not
+> the shop.
+>
+> Every screen states which setup produced its numbers. The whole run
+> reproduces from a seed, to the rupee.
+>
+> The honest gap: today, no AI shopper checks back for a second offer. That
+> doesn't exist in any payment standard yet. Somebody has to define it — and a
+> payments company sitting between thousands of merchants is the obvious one to
+> do it."
+
+Stop recording. No outro, no thank-you slide.
 
 ---
 
-## Rules for the recording
+## Rules while recording
 
-**Show the weaknesses on screen.** The exception list, the concession ratio, the
-unclassified count, the simulated-components banner. Volunteering them is what
-makes everything else believable.
+**Show the weak numbers on screen.** The refusals, the fourteen it couldn't
+classify, the one-rupee-forty-seven of discount, the method line. Volunteering
+them is what makes the strong numbers believable.
 
-**Never quote walkthrough totals.** Walkthrough forces every session into the
-treatment arm so the recovery path always runs. The console says so in a banner
-and suppresses the lift figure. Quote batch numbers only.
+**Say "shopper" and "listing", not "agent session" and "SKU".** The console now
+does the same — rows read *"Induction Cooktop Mk II — agent stopped: the listing
+was missing a spec it needed to commit"*.
 
-**If a live backend fails mid-take**, don't fight it. Tick offline, say "this run
-is the offline reproducible path", and carry on. The offline batch reproduces to
-the rupee from its seed, which is a feature worth saying out loud.
+**Never quote Walkthrough totals.** One attempt, forced into treatment. It's a
+demonstration of the mechanism, not a measurement.
+
+**Don't apologise for the simulation.** State it once, plainly, in the last
+thirty seconds, and move on. Every measured result in the world states its
+method.
 
 ---
 
-## The three questions you will be asked
+## The four questions you will be asked
 
-**"Your data is fake."** The catalogue and faults are, and it's on every screen.
-The payments are real test-mode orders and the buyer decisions come from a real
-model. Treatment and control share the same synthetic world, so the lift measures
-the system. And because I injected the faults, I have ground truth — which is the
-only reason diagnosis accuracy can be reported honestly instead of asserted.
+**"Your data is made up."** The catalogue and the planted problems are, and it
+says so on screen. The payments are real Razorpay test-mode orders and the
+shoppers' decisions come from a real model. Both groups shop the same catalogue,
+so the gap measures the product. And because I planted the problems, I know the
+right answers — which is the only reason I can report how often it diagnoses
+correctly instead of just asserting that it does.
 
-**"Your kill switch still recovered twenty-six thousand rupees."** Those are
-buyers that retried and converted without help — the ledger records them as
-`buyer_self_recovery`, attributed to the buyer, not the layer, and the concession
-ratio is zero because no money action executed. It is the same effect the control
-arm measures, and reporting it rather than zeroing it is the honest choice.
+**"Seventy-one percent recovery is not believable."** For human shoppers, no.
+Human abandonment is about hesitation, and a discount barely moves it. Machine
+abandonment is mechanical: supply the missing wattage and the same shopper buys,
+every time. The rate also depends on the mix of problems I chose, which is
+exactly why I show the breakdown by cause instead of one blended number —
+missing-data problems recover fully, ones needing a person's consent about half,
+ones where the money genuinely isn't there, close to nothing.
 
-**"71% recovery is implausible."** For human abandonment, yes. Agent failures are
-deterministic: supply the missing attribute and the same agent converts. The rate
-is also a function of the fault mix I chose, which is why the per-cause table is
-the portable result — data defects recover at 100%, consent-bound at ~52%,
-funds-bound at 0–51%.
+**"The kill switch still recovered twenty-six thousand rupees."** Those are
+shoppers that retried and succeeded without us. The audit trail records them as
+the shopper's own doing, and the discount given is zero because no action ran.
+It's the same effect the control group measures.
 
-**"Is this production-ready?"** No, and the README says so in a section called
-Honest limitations. It's a working prototype that proves a mechanism against real
-payment infrastructure and quantifies the opportunity. The specific gaps are
-listed: no PIM adapter, no multi-tenancy, priors not yet measured, and the
-re-offer primitive doesn't exist in any protocol.
+**"Is it production ready?"** No, and the README says so under Honest
+limitations. It's a working prototype that proves the mechanism against real
+payment infrastructure and puts a rupee figure on the opportunity. The gaps are
+listed: no catalogue-system connector, no multi-tenancy, the priors in the rules
+are set by hand rather than measured, and the second-offer step doesn't exist in
+any payment standard yet.

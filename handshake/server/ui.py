@@ -263,6 +263,18 @@ input[type=checkbox]{accent-color:var(--brand);width:15px;height:15px}
 @media(max-width:1180px){.cols{grid-template-columns:1fr}}
 .stack{display:flex;flex-direction:column;gap:14px}
 
+/* the method note that replaces the old warning panel: one line, not a box */
+.prov{margin:12px 2px 0;font-family:var(--fm);font-size:11.5px;color:var(--tx3);
+  letter-spacing:.01em;line-height:1.6}
+.prov b{color:var(--tx2);font-weight:600}
+
+/* the drawer opens on what happened, in words, before any API trace */
+.lead{border-left:3px solid var(--az400);padding:1px 0 1px 14px;margin:0 0 18px;
+  font-size:14.5px;line-height:1.62;color:var(--tx2)}
+.lead p{margin:0 0 9px}
+.lead p:last-child{margin:0}
+.lead b{color:var(--tx);font-weight:600}
+
 /* ============================================================= stream ==== */
 .stream{max-height:452px;overflow-y:auto}
 .srow{display:grid;grid-template-columns:14px 82px minmax(0,1fr) auto;gap:11px;
@@ -491,7 +503,7 @@ footer a{color:var(--tx2)}
   <!-- ========================================================= RECOVERY -->
   <section class="tab on" id="tab-recovery">
     <div class="toolbar">
-      <span class="field">Sessions <input type="number" id="sessions" value="200" min="10" max="2000" step="10"></span>
+      <span class="field">Shopping attempts <input type="number" id="sessions" value="200" min="10" max="2000" step="10"></span>
       <button class="btn" id="run">Run batch</button>
       <button class="btn sec" id="walk">Walkthrough</button>
       <button class="btn sec" id="stop" disabled>Stop</button>
@@ -499,6 +511,10 @@ footer a{color:var(--tx2)}
       <div class="sp"></div>
       <span class="hint" id="ctlhint">Takes about twenty seconds.</span>
     </div>
+
+    <p class="prov" id="prov">Press <b>Run batch</b> to send agent buyers at the merchant
+    and measure what comes back, or <b>Walkthrough</b> to follow a single agent end to
+    end.</p>
 
     <div id="runnotes"></div>
 
@@ -532,7 +548,7 @@ footer a{color:var(--tx2)}
 
     <div class="cols">
       <div class="card">
-        <div class="hd"><h3>Sessions</h3><span class="meta" id="streamcount">idle</span></div>
+        <div class="hd"><h3>Agent shopping attempts</h3><span class="meta" id="streamcount">idle</span></div>
         <div class="stream" id="stream">
           <div class="zero-state">
             <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#C8CDD0" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 9.5h19M6.5 14h4"/></svg>
@@ -607,7 +623,8 @@ footer a{color:var(--tx2)}
     <footer>
       Handshake <span id="ver"></span> &middot; Razorpay AI Buildathon, Track 03 &middot;
       <a href="/">landing</a> &middot; <a href="/healthz">health</a> &middot; <a href="/docs">API</a><br>
-      Test mode only. Simulated components are named in the environment panel and on every report.
+      Test mode only. Synthetic catalogue, buyers and mandates; delegated caps simulated.
+      The backends behind any figure are named on the line above it.
     </footer>
   </section>
 
@@ -640,6 +657,36 @@ const CAUSE_NAMES = {
   A8:"fulfilment mismatch", B1:"insufficient balance", B2:"issuer downtime",
   B3:"mandate invalid", B4:"reserve exhausted", B5:"instrument decline",
 };
+/* The same taxonomy, in the words a merchant would use. The codes stay on
+   screen next to them — this is a translation, not a replacement. */
+const PLAIN = {
+  A1:"the listing was missing a spec it needed to commit",
+  A2:"two listings were impossible to tell apart",
+  A3:"the price moved after it had been quoted",
+  A4:"the basket came in over its delegated spending cap",
+  A5:"checkout demanded a step only a human can do",
+  A6:"a temporary error looked permanent to the agent",
+  A7:"the returns policy was prose, not machine-readable fields",
+  A8:"it could not be delivered to that pincode",
+  B1:"the account was short of funds",
+  B2:"the issuing bank was down",
+  B3:"the payment mandate had expired or been revoked",
+  B4:"the delegated reserve was already used up",
+  B5:"the payment method was declined",
+};
+const FIXES = {
+  "I-01":"filled in the missing spec and offered it again",
+  "I-02":"separated the two listings and offered one",
+  "I-03":"honoured the original quoted price",
+  "I-04":"offered a smaller basket that fits the cap",
+  "I-05":"asked the buyer's owner to raise the cap",
+  "I-06":"sent the owner a single-use approval link",
+  "I-07":"served the policy as machine-readable fields",
+  "I-08":"retried on a different payment method",
+  "I-09":"retried inside the permitted cooldown",
+  "I-10":"handed it to a human queue",
+  "none_buyer_self_recovery":"did nothing — the agent retried and succeeded on its own",
+};
 const PAGES = {
   recovery:  ["Recovery","Recover revenue from agent checkouts that already failed."],
   prevention:["Prevention","Find and price catalogue defects before they refuse a basket."],
@@ -650,6 +697,7 @@ const $ = id => document.getElementById(id);
 const inr = v => "₹" + Math.round(v || 0).toLocaleString("en-IN");
 const pct = v => (100 * (v || 0)).toFixed(1) + "%";
 let since = 0, timer = null, current = null, pending = null, lastGated = null, rows = 0;
+let scanProgress = "";
 
 /* ---------- navigation ---------- */
 function showTab(name){
@@ -737,12 +785,18 @@ function addRow(e){
   const stream = $("stream");
   if(rows === 0) stream.innerHTML = "";
   const ok = e.recovered, failed = e.terminal === "FAILED" && !e.recovered;
+  const item = e.product || "an item";
   let what;
-  if(ok) what = `<b>Recovered</b> via ${(e.interventions||[]).join(", ")}`;
-  else if(failed) what = e.cause
-    ? `Lost &mdash; ${CAUSE_NAMES[e.cause] || e.cause} <span class="mono">${e.cause}</span>`
-    : "Lost &mdash; unresolved";
-  else what = "Converted on the first pass";
+  if(ok){
+    const act = FIXES[(e.interventions || [])[0]] || "recovered";
+    what = `<b>${item}</b> &mdash; ${act}`;
+  } else if(failed){
+    what = `<b>${item}</b> &mdash; agent stopped: `
+      + (PLAIN[e.cause] || "the decline carried no usable reason code")
+      + (e.cause ? ` <span class="mono">${e.cause}</span>` : "");
+  } else {
+    what = `<b>${item}</b> &mdash; bought on the first pass`;
+  }
   const b = document.createElement("button");
   b.className = (ok ? "srow ok" : (failed ? "srow fail" : "srow")) + " new";
   b.innerHTML = `<span class="ic ${ok ? "ok" : (failed ? "no" : "pass")}"></span>
@@ -760,10 +814,19 @@ function handle(e){
     case "session_start":
       resetSession(e.session_id, e.buyer);
       break;
+    case "probe_progress":
+      /* A scan is two passes over the same buyers: the flawed feed, then the
+         repaired one. Say which pass and how far, so a long scan is a number
+         rather than a spinner. */
+      scanProgress = `pass ${e.phase === "after" ? 2 : 1} of 2 · `
+        + `${e.done} of ${e.total} probes`;
+      break;
+    case "probe_failure":
+      break;
     case "failure_detected":
       commitSession();
       setStage(0, `${inr(e.at_risk)} at risk — ${e.note}`);
-      narrate(`Agent <b>${(current||{}).buyer || ""}</b> stopped with
+      narrate(`An agent was buying <b>${e.product || "an item"}</b> and stopped with
                <b>${inr(e.at_risk)}</b> on the table. All the merchant sees is a session
                that opened and went quiet.`);
       break;
@@ -928,11 +991,31 @@ function runNotes(d){
   if(llm && llm.active && !llm.mixed_run && llm.fallbacks) out.push(['warn',
     llm.fallbacks + " of " + llm.calls + " calls fell back to the heuristic ("
     + pct(llm.model_share) + " from the model). Substantially a model run — disclose it."]);
-  if(d.summary && d.summary.simulated && d.summary.simulated.length) out.push(['warn',
-    "<b>Simulated in this run.</b><ul>"
-    + d.summary.simulated.map(x => "<li>" + x + "</li>").join("") + "</ul>"]);
   $("runnotes").innerHTML = out.map(([c, html]) =>
     `<div class="note ${c}" style="margin-top:14px">${html}</div>`).join("");
+}
+
+/* One line of provenance, next to the figures it belongs to. Not a warning
+   panel: a method note, of the kind any measured result carries. */
+function provenance(d){
+  if(!d.summary) return;
+  const b = d.backends || {}, s = d.summary, llm = s.llm, bits = [];
+  const n = (s.treatment && s.control && s.treatment.sessions != null)
+    ? s.treatment.sessions + s.control.sessions : null;
+  if(n) bits.push(n + " agent checkouts");
+  bits.push(b.payments === "razorpay" ? "payments: <b>Razorpay test mode</b>"
+                                      : "payments: simulated rail");
+  if(llm && llm.active){
+    const model = (llm.models_used && llm.models_used.length)
+      ? llm.models_used.join(", ") : "model";
+    bits.push("buyers: <b>" + model + "</b>"
+      + (llm.model_share != null ? " (" + pct(llm.model_share) + " of decisions)" : ""));
+  } else {
+    bits.push("buyers: scripted decision policy");
+  }
+  if(s.simulated && s.simulated.length)
+    bits.push("delegated caps and catalogue simulated");
+  $("prov").innerHTML = bits.join(" &middot; ");
 }
 
 function badges(d){
@@ -983,10 +1066,11 @@ async function hydrate(){
 /* ---------- prevention ---------- */
 function renderScan(d){
   if(d.scanning){
-    $("scanbadge").textContent = "probing…";
+    $("scanbadge").textContent = scanProgress || "probing…";
     $("scanwrap").innerHTML = '<div class="card" style="margin-top:14px"><div class="zero-state"><h4>Sending agent buyers at the catalogue</h4><p>No faults are injected, so every failure they hit belongs to the feed itself.</p></div></div>';
     return;
   }
+  scanProgress = "";
   const r = d.readiness;
   if(!r) return;
   if(r.error){
@@ -1043,7 +1127,7 @@ function renderScan(d){
       <div class="advbody">
         <h4>What each defect cost</h4>
         <div class="card"><div class="tw"><table><thead><tr><th>Defect</th>
-          <th>Field to fix</th><th class="n">Sessions</th><th class="n">Refused GMV</th>
+          <th>Field to fix</th><th class="n">Sessions</th><th class="n">Value refused</th>
           <th class="n">Listings</th></tr></thead><tbody>${priced}</tbody></table></div></div>
         <h4>Every defect found by inspection <span style="color:var(--tx3);font-weight:400">· no agents needed</span></h4>
         <div class="card"><div class="tw"><table><thead><tr><th>Kind</th><th>Field</th>
@@ -1052,7 +1136,7 @@ function renderScan(d){
         ${(r.non_catalogue && r.non_catalogue.length) ? `
           <h4>Not the catalogue's fault <span style="color:var(--tx3);font-weight:400">· no field can fix these</span></h4>
           <div class="card"><div class="tw"><table><thead><tr><th>Cause</th><th>Why</th>
-            <th class="n">Sessions</th><th class="n">Refused GMV</th></tr></thead><tbody>`
+            <th class="n">Sessions</th><th class="n">Value refused</th></tr></thead><tbody>`
           + r.non_catalogue.map(x => `<tr><td class="cid">${x.cause}</td><td>${x.reason}</td>
             <td class="n">${x.sessions}</td><td class="n">${inr(x.at_risk)}</td></tr>`).join("")
           + `</tbody></table></div></div>
@@ -1132,6 +1216,26 @@ async function openSession(sid){
   if(trace){
     $("dsub").textContent = `${trace.buyer} · ${trace.persona} · ${trace.arm} arm · `
       + `${trace.terminal}${trace.recovered ? " → recovered" : ""}`;
+    const item = (trace.basket && trace.basket[0]) || {};
+    const cz = trace.diagnosed ? trace.diagnosed.cause : "";
+    let story;
+    if(trace.recovered){
+      story = "It stopped because " + (PLAIN[cz] || "the failure could not be classified")
+        + ". Handshake " + (FIXES[(trace.interventions || [])[0]] || "acted")
+        + ", and the agent came back and paid <b>" + inr(trace.recovered_value) + "</b>.";
+    } else if(trace.terminal === "FAILED"){
+      story = "It stopped because "
+        + (PLAIN[cz] || "the decline carried no usable reason code")
+        + ", and nothing was recovered.";
+    } else {
+      story = "It completed on the first pass, with no help needed.";
+    }
+    html += `<div class="lead">
+      <p>An AI shopping agent was buying
+      <b>${item.title || item.sku || "an item"}</b> at
+      <b>${inr(trace.basket_value)}</b>, against a delegated spending cap of
+      ${inr(trace.spend_cap)}.</p>
+      <p>${story}</p></div>`;
     html += `<div class="note">Basket ${inr(trace.basket_value)} · declared cap
       ${inr(trace.spend_cap)}${trace.diagnosed ? " · diagnosed <b>" + trace.diagnosed.cause
       + "</b> at confidence " + trace.diagnosed.confidence : ""}${trace.recovered
@@ -1206,6 +1310,7 @@ async function poll(){
   perClass(d.summary);
   runNotes(d);
   badges(d);
+  provenance(d);
   renderScan(d);
   const busy = d.running || d.scanning;
   ["run","walk","scan","zrun","zscan"].forEach(id => { const el = $(id); if(el) el.disabled = busy; });

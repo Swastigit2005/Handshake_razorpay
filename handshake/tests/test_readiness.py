@@ -149,3 +149,35 @@ def test_the_scan_reports_both_buckets():
     assert all("defect" in row for row in report["priced"])
     for row in report["priced"]:
         assert row["field"], "a catalogue defect must name the field to fix"
+
+
+def test_the_scan_pins_the_deterministic_buyer(monkeypatch):
+    """The repair proof is an A/B test on the feed: same seed, same personas,
+    same decisions, only the catalogue differs. A hosted model does not return
+    the same decision twice on identical input, so a model buyer would put noise
+    into the delta with no way to separate it from the repair. The scan forces
+    the deterministic buyer for the same reason it never touches a live rail —
+    and the report says which buyer ran."""
+    monkeypatch.setenv("HS_BUYERS", "llm")
+    monkeypatch.setenv("HS_LLM_API_KEY", "sk-not-used")
+    cfg = RunConfig()
+    assert cfg.buyer_backend == "llm", "the environment must actually ask for a model"
+
+    report = scan(sessions=120, defect_rate=0.25, cfg=cfg)
+    assert report["buyers"] == "heuristic", "a scan must not run on a model buyer"
+    assert cfg.buyer_backend == "llm", "the caller's config must not be mutated"
+
+
+def test_the_scan_reports_progress_for_both_passes():
+    class Recorder:
+        def __init__(self): self.events = []
+        def emit(self, kind, **p): self.events.append((kind, p))
+        def pause(self, seconds=0.0): pass
+        def attach(self, result, ledger): pass
+
+    sink = Recorder()
+    scan(sessions=60, defect_rate=0.25, sink=sink)
+    phases = {p["phase"] for k, p in sink.events if k == "probe_progress"}
+    assert phases == {"before", "after"}, phases
+    for _, p in [e for e in sink.events if e[0] == "probe_progress"]:
+        assert p["total"] == 60 and 0 <= p["done"] < 60

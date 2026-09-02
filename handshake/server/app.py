@@ -133,7 +133,11 @@ class RunState:
             return self.events[index:]
 
     def trace(self, session_id):
-        for result in self.results:
+        # Snapshot under the lock: attach() appends to this list from the batch
+        # thread while a mid-run request is reading it.
+        with self.lock:
+            live = list(self.results)
+        for result in live:
             if result.trace.session_id == session_id:
                 return result
         return None
@@ -162,6 +166,13 @@ class UISink(Sink):
         if self.pace:
             time.sleep(seconds or self.pace)
 
+    def attach(self, result, ledger):
+        """Publish each session the instant it resolves, so the drawer opens
+        mid-run instead of reporting the session as belonging to an older run."""
+        with self.state.lock:
+            self.state.results.append(result)
+            self.state.ledger = ledger
+
 
 # --------------------------------------------------------------- runners ----
 
@@ -169,6 +180,8 @@ def _runner(cfg, mode, pace):
     sink = UISink(STATE, pace)
     try:
         run = run_batch(cfg, sink=sink)
+        # attach() has been publishing these all along; re-point at the
+        # authoritative objects the runner returns.
         STATE.results = run["results"]
         STATE.ledger = run["ledger"]
         STATE.decider = run.get("decider")
@@ -198,7 +211,7 @@ def _scan_runner(sessions, defect_rate, top):
         cfg = RunConfig()
         cfg.payments_backend = "sim"        # a scan never needs to move money
         report = run_scan(sessions=sessions, defect_rate=defect_rate,
-                          cfg=cfg, top_k=top)
+                          cfg=cfg, top_k=top, sink=UISink(STATE))
         try:
             report["run_id"] = db.save_scan(report)
         except Exception:

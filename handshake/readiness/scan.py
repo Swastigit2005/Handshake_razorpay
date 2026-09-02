@@ -15,6 +15,7 @@ seed, same personas, same decisions — only the feed differs. The delta is a
 measurement, not a projection.
 """
 
+import copy
 import random
 from collections import defaultdict
 
@@ -64,12 +65,15 @@ DEFECT_FIELD = {
 }
 
 
-def _probe(catalog, personas, cfg, sessions, decider=None, sink=None):
+def _probe(catalog, personas, cfg, sessions, decider=None, sink=None, phase=""):
     """Send agent buyers at a catalogue with no injected faults.
 
     Every failure here is the catalogue's own doing."""
     out = []
+    step = max(1, sessions // 25)
     for i in range(sessions):
+        if sink and i % step == 0:
+            sink.emit("probe_progress", done=i, total=sessions, phase=phase)
         rng = random.Random(cfg.seed * 977 + i)
         persona = personas[i % len(personas)]
         trace = Trace(session_id=f"probe_{i:05d}", buyer_id=persona.id,
@@ -137,7 +141,17 @@ def _price(results):
 
 def scan(sessions=300, defect_rate=0.22, cfg=None, top_k=5, sink=None):
     """Audit, price, then prove the repair. Returns one report."""
-    cfg = cfg or RunConfig()
+    cfg = copy.copy(cfg or RunConfig())
+
+    # The proof in step 3 is an A/B test on the catalogue: same seed, same
+    # personas, same decisions, only the feed differs. A hosted model does not
+    # guarantee the same decision twice on identical input, so a model buyer
+    # would put noise into the delta and there would be no way to tell it from
+    # the repair. The scan therefore pins the deterministic buyer, for the same
+    # reason it never touches a live payment rail. The report says which buyer
+    # ran, so this is disclosed rather than hidden.
+    cfg.buyer_backend = "heuristic"
+
     clean = build_catalog(cfg.seed)
     flawed, planted = inject_defects(clean, rate=defect_rate, seed=cfg.seed)
 
@@ -150,7 +164,7 @@ def scan(sessions=300, defect_rate=0.22, cfg=None, top_k=5, sink=None):
     found = audit(flawed)
     blockers = blocking(found)
 
-    before = _probe(flawed, personas, cfg, sessions, decider, sink)
+    before = _probe(flawed, personas, cfg, sessions, decider, sink, "before")
     priced, non_catalogue = _price(before)
 
     # --- prove the repair -------------------------------------------------
@@ -159,7 +173,7 @@ def scan(sessions=300, defect_rate=0.22, cfg=None, top_k=5, sink=None):
         ranked_skus.extend(row["skus"])
     ranked_skus = list(dict.fromkeys(ranked_skus))
     repaired_catalog = repair(flawed, clean, set(ranked_skus))
-    after = _probe(repaired_catalog, personas, cfg, sessions, decider)
+    after = _probe(repaired_catalog, personas, cfg, sessions, decider, sink, "after")
 
     def totals(rows):
         return {

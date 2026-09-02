@@ -234,3 +234,42 @@ def test_seeding_never_overwrites_a_real_run(tmp_path, monkeypatch):
     assert first["seeded"]
     second = seeder.seed(path=str(tmp_path / "warm.db"))
     assert not second["seeded"] and "already stored" in second["skipped"]
+
+
+def test_a_session_opens_while_the_batch_is_still_running(client):
+    """The drawer must work mid-run. Sessions used to be published only when the
+    whole batch finished, so clicking a row during a run reported it as
+    belonging to an earlier run."""
+    c, _ = client
+    c.post("/api/run", json={"sessions": 400, "mode": "batch", "offline": True})
+
+    sid, deadline = "", time.time() + 60
+    while time.time() < deadline:
+        state = c.get("/api/state?since=0").json()
+        ends = [e for e in state.get("events", []) if e.get("kind") == "session_end"]
+        if ends and state["running"]:
+            sid = ends[0]["session_id"]
+            break
+        if not state["running"]:
+            raise AssertionError("the batch finished before anything was observed")
+        time.sleep(0.05)
+    assert sid, "no session resolved while the batch was running"
+
+    trace = c.get(f"/api/trace/{sid}")
+    assert trace.status_code == 200, "a resolved session must be readable mid-run"
+    body = trace.json()
+    assert body["events"], "the trace must carry the API traffic"
+    assert body["basket"] and body["basket"][0]["sku"]
+
+    c.post("/api/stop")
+    _wait(c)
+
+
+def test_the_stream_names_the_product_being_bought(client):
+    c, _ = client
+    c.post("/api/run", json={"sessions": 120, "mode": "batch", "offline": True})
+    _wait(c)
+    events = c.get("/api/state?since=0").json()["events"]
+    ends = [e for e in events if e.get("kind") == "session_end"]
+    assert ends and all("product" in e for e in ends)
+    assert any(e["product"] for e in ends), "at least one row must name its item"

@@ -64,7 +64,9 @@ class BuyerAgent:
         self.sku = view["sku"]
         detail = merchant.get_product(self.sku) or view
         value = self._gross(detail, self.qty)
-        self.trace.basket = [{"sku": self.sku, "qty": self.qty, "price": detail["price"]}]
+        self.trace.basket = [{"sku": self.sku, "title": detail.get("title", ""),
+                              "category": detail.get("category", ""),
+                              "qty": self.qty, "price": detail["price"]}]
         self.trace.basket_value = value
 
         required = required_attributes(detail["category"])

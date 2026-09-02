@@ -73,6 +73,15 @@ class Sink:
     def pause(self, seconds=0.0):
         pass
 
+    def attach(self, result, ledger):
+        """One finished session, handed over the moment it resolves.
+
+        A live console needs the whole SessionResult and the ledger to answer
+        "open that session" while the batch is still running; the event stream
+        alone carries too little. Read-only for the caller — the batch keeps
+        appending to the same ledger."""
+        pass
+
 
 _NULL = Sink()
 
@@ -137,6 +146,7 @@ def run_batch(cfg=None, progress=None, sink=None):
                                    "currency": "INR"})
             sink.emit("failure_detected", session_id=trace.session_id,
                       at_risk=round(trace.at_risk_value, 2),
+                      product=_product(trace),
                       note=trace.abandon_note)
             sink.pause()
             diagnosis = diagnose(trace, merchant)
@@ -161,6 +171,7 @@ def run_batch(cfg=None, progress=None, sink=None):
             _natural_retry(result, trace, merchant, agent, rng, ledger)
 
         results.append(result)
+        sink.attach(result, ledger)
         sink.emit("session_end", session_id=trace.session_id,
                   terminal=str(trace.terminal_state).split(".")[-1],
                   basket_value=round(trace.basket_value, 2),
@@ -169,6 +180,7 @@ def run_batch(cfg=None, progress=None, sink=None):
                   recovered_value=round(result.recovered_value, 2),
                   cause=result.diagnosis.cause if result.diagnosis else "",
                   interventions=list(result.interventions),
+                  product=_product(trace),
                   exception=result.exception, arm=arm.value)
         sink.emit("progress", done=len(results), total=cfg.batch_size)
         if progress and (i + 1) % max(1, cfg.batch_size // 10) == 0:
@@ -180,6 +192,11 @@ def run_batch(cfg=None, progress=None, sink=None):
 
 # Causes a buyer can plausibly clear without help, and how often.
 NATURAL_RECOVERY = {"A6": 0.35, "B1": 0.30, "B2": 0.35, "A3": 0.10}
+
+
+def _product(trace):
+    """The item the agent was trying to buy. Display only — nothing decides on it."""
+    return (trace.basket[0].get("title") if trace.basket else "") or ""
 
 
 def _natural_retry(result, trace, merchant, agent, rng, ledger):
