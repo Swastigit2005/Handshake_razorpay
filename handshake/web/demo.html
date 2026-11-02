@@ -325,9 +325,16 @@ function renderAgent(ts, sealed) {
 }
 
 function renderShop(lines) {
-  keepBottom($("#shop"), lines.map(l => {
+  // Collapse runs of identical lines (an agent polling for a re-offer) into one.
+  const runs = [];
+  for (const l of lines) {
+    const last = runs[runs.length - 1];
+    if (last && last.line === l.line && last.kind === l.kind) last.n++;
+    else runs.push({...l, n: 1});
+  }
+  keepBottom($("#shop"), runs.map(l => {
     const txt = esc(l.line).replace(/→ (\d{3})/, (m, c) => `→ <span class="s${c[0]}">${c}</span>`);
-    return `<div class="logline ${l.kind === "webhook" ? "webhook" : ""} fade">${txt}</div>`;
+    return `<div class="logline ${l.kind === "webhook" ? "webhook" : ""} fade">${txt}${l.n > 1 ? ` <span class="muted">×${l.n}</span>` : ""}</div>`;
   }).join("") || `<div class="empty">No requests yet.</div>`);
 }
 
