@@ -187,6 +187,9 @@ CREATE TABLE IF NOT EXISTS deliveries (
 CREATE INDEX IF NOT EXISTS deliveries_due ON deliveries (status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS deliveries_journey ON deliveries (merchant_id, journey_id);
 """),
+    (3, "re-offers are consumed once acted on", """
+ALTER TABLE reoffers ADD COLUMN consumed_at {FLOAT} NOT NULL DEFAULT 0
+"""),
 ]
 
 TYPES = {"postgres": {"JSON": "JSONB", "FLOAT": "DOUBLE PRECISION"},

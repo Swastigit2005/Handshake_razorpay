@@ -18,7 +18,7 @@ HS_DB            SQLite path. Runs, sessions and ledgers survive a restart.
 import os
 import threading
 import time
-from typing import Optional
+from typing import Any, Optional
 
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -665,6 +665,76 @@ def demo_scorecard():
 def _analyst_available():
     from ..live import analyst
     return analyst.available()
+
+
+# ------------------------------------------------------------------- MCP ---
+# A real agent (Claude, or any MCP client) shops the demo store through here.
+
+from fastapi import Body                                 # noqa: E402
+from fastapi.responses import Response                    # noqa: E402
+
+from ..demo_shop import mcp_server                        # noqa: E402
+
+
+@app.post("/mcp", include_in_schema=False)
+def mcp_endpoint(request: Request, payload: Any = Body(...),
+                 mcp_session_id: str = Header(default="")):
+    if not SANDBOX:
+        return JSONResponse({"error": "the sandbox store is disabled"}, 403)
+    base = _self_url(request)
+    demo_runner.bootstrap(base)
+    sid = mcp_session_id
+    if isinstance(payload, list):
+        replies = []
+        for message in payload:
+            reply, sid = mcp_server.handle(message, sid, base)
+            if reply is not None:
+                replies.append(reply)
+        body = replies or None
+    else:
+        body, sid = mcp_server.handle(payload, sid, base)
+    headers = {"Mcp-Session-Id": sid} if sid else {}
+    if body is None:
+        return Response(status_code=202, headers=headers)
+    return JSONResponse(body, headers=headers)
+
+
+@app.get("/demo/api/agents", include_in_schema=False)
+def demo_real_agents(limit: int = 20):
+    """Journeys from agents connected over MCP — agents nobody here wrote — with
+    what Handshake made of each, newest first."""
+    agents = {s["store"].agent_id: s.get("client") for s in list(mcp_server.SESSIONS.values())}
+    out = []
+    if agents and demo_runner.merchant():
+        for j in live_store.list_journeys(demo_runner.MERCHANT_ID, None, 300, 0):
+            if j["agent_id"] not in agents:
+                continue
+            dg, vd = j["diagnosis"] or {}, j["verdict"] or {}
+            out.append({"journey_id": j["journey_id"], "agent_id": j["agent_id"],
+                        "client": agents[j["agent_id"]], "status": j["status"],
+                        "stage": j["stage"], "sku": j["sku"], "value": j["basket_value"],
+                        "recovered": j["recovered_value"], "last_event_at": j["last_event_at"],
+                        "cause": dg.get("cause"), "name": dg.get("name"),
+                        "confidence": dg.get("confidence"), "explanation": dg.get("explanation"),
+                        "action": (j["directive"] or {}).get("intervention")
+                        or vd.get("intervention_id") or None,
+                        "held_by": vd.get("binding_rule") or None,
+                        "proposal": (vd.get("proposal") or {}).get("message")})
+            if len(out) >= limit:
+                break
+    return {"journeys": out, "connected_sessions": len(agents)}
+
+
+@app.get("/mcp", include_in_schema=False)
+def mcp_stream():
+    return JSONResponse({"error": "this server does not open a stream; POST JSON-RPC instead"},
+                        405, headers={"Allow": "POST"})
+
+
+@app.delete("/mcp", include_in_schema=False)
+def mcp_close(mcp_session_id: str = Header(default="")):
+    mcp_server.SESSIONS.pop(mcp_session_id, None)
+    return Response(status_code=204)
 
 
 @app.get("/demo/api/sandbox", include_in_schema=False)

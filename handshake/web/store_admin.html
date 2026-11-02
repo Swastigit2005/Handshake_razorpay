@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Store admin · Kaveri Home &amp; Tech</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/web/hs.css">
+<style>
+.wrap{padding-block:26px 50px}
+.lead{color:var(--tx2);max-width:72ch;margin:10px 0 0}
+.grid2{display:grid;grid-template-columns:1fr 320px;gap:16px;margin-top:22px;align-items:start}
+@media(max-width:980px){.grid2{grid-template-columns:1fr}}
+.prob{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;padding:5px 0}
+.prob input{margin-top:3px}
+td .prob{padding:2px 0;font-size:12.5px}
+.actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.state{font-size:13px;color:var(--tx3)}
+.off{color:var(--green);font-weight:600}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="shell">
+  <a class="mark" href="/"><svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#050505"/><path d="M11 9v14M11 9h4a3.5 3.5 0 0 1 0 7h-4" stroke="#4287FF" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M21 23V9M21 23h-4a3.5 3.5 0 0 1 0-7h4" stroke="#00BD6E" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>Handshake</a>
+  <div class="navlinks">
+    <a href="/">Overview</a><a href="/demo">Live demo</a><a href="/merchant">Merchant dashboard</a>
+    <a href="/shop/">Demo store</a><a class="on" href="/shop/admin">Store admin</a>
+  </div>
+</div></nav>
+<main class="shell wrap">
+  <div class="eyebrow">Kaveri Home &amp; Tech · back office</div>
+  <h1>Break your store on purpose</h1>
+  <p class="lead">This is the store's real configuration, the way a merchant's catalogue is often quietly wrong.
+  Anything you switch on here applies to <b>every</b> agent that shops afterwards, including one you connect
+  yourself. It is not passed to agents and not passed to Handshake. Handshake has to notice it from the
+  store's traffic, like it would on a real shop.</p>
+
+  <div class="grid2">
+    <div class="card tw">
+      <div class="hd"><h3>Problems on one product</h3></div>
+      <table><thead><tr><th>Product</th><th>Problems</th></tr></thead><tbody id="products">
+        <tr><td colspan="2"><div class="empty">Loading…</div></td></tr></tbody></table>
+    </div>
+    <div style="display:grid;gap:16px">
+      <div class="card"><div class="hd"><h3>Problems at checkout and payment</h3></div>
+        <div class="bd" id="global"></div></div>
+      <div class="card"><div class="bd">
+        <div class="actions"><button class="btn" id="save">Save store settings</button>
+          <button class="btn sec" id="reset">Fix everything</button></div>
+        <p class="state" id="state"></p>
+        <p class="small">Repairs Handshake sends during a recovery apply to the agent being recovered, so the
+        store stays broken for the next test until you fix it here. Settings live in the running process; a
+        redeploy resets them.</p>
+      </div></div>
+    </div>
+  </div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+let cfg = null;
+
+async function load() {
+  cfg = await (await fetch("/shop/admin/api/config")).json();
+  $("#products").innerHTML = cfg.catalogue.map(p => `<tr><td><b class="mono">${esc(p.sku)}</b><br>${esc(p.title)}
+    <div class="small">₹${p.price.toLocaleString("en-IN")} · ${esc(p.category.replace(/_/g, " "))}</div></td>
+    <td>${cfg.product_scoped.map(c => `<label class="prob"><input type="checkbox" data-sku="${esc(p.sku)}" data-c="${esc(c)}"
+      ${(cfg.products[p.sku] || []).includes(c) ? "checked" : ""}>${esc(cfg.problems[c])}</label>`).join("")}</td></tr>`).join("");
+  $("#global").innerHTML = cfg.store_wide.map(c => `<label class="prob"><input type="checkbox" data-g="${esc(c)}"
+    ${cfg.global.includes(c) ? "checked" : ""}>${esc(cfg.problems[c])}</label>`).join("");
+  status();
+}
+
+function status() {
+  const n = cfg.global.length + Object.values(cfg.products).reduce((a, v) => a + v.length, 0);
+  $("#state").innerHTML = n ? `${n} problem${n === 1 ? "" : "s"} live in the store right now.` : `<span class="off">The store is healthy.</span>`;
+}
+
+async function save(body) {
+  const r = await fetch("/shop/admin/api/config", {method: "PUT", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(body)});
+  cfg = await r.json();
+  await load();
+}
+
+$("#save").onclick = () => {
+  const products = {};
+  document.querySelectorAll("[data-sku]:checked").forEach(i => (products[i.dataset.sku] ||= []).push(i.dataset.c));
+  const global = [...document.querySelectorAll("[data-g]:checked")].map(i => i.dataset.g);
+  save({global, products});
+};
+$("#reset").onclick = () => save({global: [], products: {}});
+load();
+</script>
+</body>
+</html>

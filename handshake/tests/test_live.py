@@ -527,7 +527,8 @@ def test_demo_scenarios_end_to_end_through_the_sdk(demo):
 def test_readyz_reports_the_configured_backend(live):
     import os
     body = live["tc"].get("/readyz").json()
-    assert body["ready"] is True and body["schema_version"] == 2
+    from handshake.database import MIGRATIONS
+    assert body["ready"] is True and body["schema_version"] == MIGRATIONS[-1][0]
     want = "postgres" if os.environ.get("HS_TEST_DATABASE_URL") else "sqlite"
     assert body["dialect"] == want
     assert "@" not in body["database"].split("//")[-1].split("/")[0] or ":" not in \
@@ -751,3 +752,106 @@ def test_mystery_shoppers_end_to_end_with_approval(demo, monkeypatch):
         assert v["judgement"]["verdict"] in ("correct", "n/a"), (v["truth"], v["journey"]["diagnosis"])
         assert v["outcome"]["bought"], v["truth"]
     assert len(approved) == 2                     # the two outside the playbook needed a person
+
+
+# --------------------------------------------- found by a real agent (Claude) ---
+
+def test_a_repeat_offer_pickup_does_not_hide_the_second_stop():
+    # Claude: stop 1 (missing battery) → took the offer → payment refused →
+    # picked the old offer up again → cancelled. The refusal must still be read.
+    events = [ev(1, "feed.read"), view(2, attrs={"capacity_l": 1.7, "warranty_months": 24}),
+              ev(3, "reoffer.fetch", 200, response={"offer": {"type": "catalogue_delta"}}),
+              view(4),
+              ev(5, "checkout.create", request={"sku": "KET-170"},
+                 response={"session_id": "cs_9", "total": 2358.82}),
+              ev(6, "checkout.update", response={"total": 2358.82}),
+              ev(7, "checkout.complete", 400, response={"error": "payment_method_unsupported"}),
+              ev(8, "reoffer.fetch", 200, response={"offer": {"type": "catalogue_delta"}}),
+              ev(9, "checkout.cancel", request={"reason": "store refuses my payment method"})]
+    d = run(events)
+    assert d["cause"] == "N1" and d["detail"]["error"] == "payment_method_unsupported"
+
+
+def test_a_used_offer_is_not_served_again_and_a_repeat_ask_rediagnoses(live):
+    tc, store = live["tc"], live["store"]
+    _, h = merchant(live)
+    _setup_catalogue(tc, h)
+    tc.post("/v1/events", json={"events": _discovery_events()}, headers=h)
+    base = {"agent_id": "ag_1", "journey_id": "jr_1"}
+    # Asking for an offer is itself the abandonment signal: no idle timer needed.
+    tc.post("/v1/events", headers=h, json={"events": [{**base, "type": "reoffer.fetch",
+                                                      "http_status": 404}]})
+    assert tc.get("/v1/journeys/jr_1", headers=h).json()["status"] == "recovering"
+    assert tc.get("/v1/reoffers/jr_1", headers=h).status_code == 200      # picked up
+    tc.post("/v1/events", headers=h, json={"events": [
+        {**base, "type": "reoffer.fetch", "http_status": 200},
+        {**base, "type": "checkout.create", "sku": "KET-170",
+         "response": {"session_id": "cs_2", "total": 2358.82}},
+        {**base, "type": "checkout.complete", "http_status": 400,
+         "response": {"error": "payment_method_unsupported"}}]})
+    assert tc.get("/v1/reoffers/jr_1", headers=h).status_code == 404      # used: not re-served
+    tc.post("/v1/events", headers=h, json={"events": [{**base, "type": "reoffer.fetch",
+                                                      "http_status": 404}]})
+    j = tc.get("/v1/journeys/jr_1", headers=h).json()
+    assert j["status"] == "exception" and j["diagnosis"]["cause"] == "N1"
+    assert j["verdict"]["proposal"]["action"] == "alternate_instrument"
+
+
+# ------------------------------------------------------- MCP and store admin ---
+
+def test_mcp_endpoint_speaks_the_protocol_and_shops_over_http(demo):
+    import json as _json
+    import urllib.request
+    base = demo.STATE["base_url"]
+
+    def rpc(body, sid=""):
+        req = urllib.request.Request(base + "/mcp", data=_json.dumps(body).encode(), method="POST",
+                                     headers={"Content-Type": "application/json",
+                                              "Accept": "application/json, text/event-stream",
+                                              **({"Mcp-Session-Id": sid} if sid else {})})
+        with urllib.request.urlopen(req) as r:
+            raw = r.read()
+            return r.status, r.headers.get("Mcp-Session-Id", ""), (_json.loads(raw) if raw else None)
+
+    st, sid, init = rpc({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                         "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                                    "clientInfo": {"name": "pytest-agent", "version": "1"}}})
+    assert st == 200 and sid and init["result"]["serverInfo"]["name"] == "kaveri-home-tech"
+    assert rpc({"jsonrpc": "2.0", "method": "notifications/initialized"}, sid)[0] == 202
+    tools = rpc({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, sid)[2]["result"]["tools"]
+    assert {t["name"] for t in tools} >= {"search_products", "pay", "check_for_offer"}
+    out = rpc({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
+               "params": {"name": "get_product", "arguments": {"sku": "IEM-010"}}}, sid)[2]
+    product = _json.loads(out["result"]["content"][0]["text"])
+    assert product["sku"] == "IEM-010" and out["result"]["isError"] is False
+    bad = rpc({"jsonrpc": "2.0", "id": 4, "method": "nope"}, sid)[2]
+    assert bad["error"]["code"] == -32601
+    # The agent's request reached Handshake through the store's SDK, under its own identity.
+    from handshake.demo_shop import mcp_server
+    agent = mcp_server.SESSIONS[sid]["store"].agent_id
+    assert agent.startswith("pytestagent_")
+    demo.STATE["client"].flush(5)
+    from handshake.live import store
+    assert any(j["agent_id"] == agent for j in store.list_journeys(demo.MERCHANT_ID, None, 50, 0))
+
+
+def test_store_admin_settings_are_the_stores_real_state(demo):
+    import json as _json
+    import urllib.request
+    base = demo.STATE["base_url"] + "/shop"
+
+    def call(method, path, body=None):
+        req = urllib.request.Request(base + path, method=method,
+                                     data=_json.dumps(body).encode() if body is not None else None,
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req) as r:
+            return _json.loads(r.read())
+
+    cfg = call("PUT", "/admin/api/config", {"global": ["unsupported_payment", "bogus"],
+                                            "products": {"HPH-045": ["missing_attribute"]}})
+    assert cfg["global"] == ["unsupported_payment"]                 # unknown problems ignored
+    served = call("GET", "/acp/products/HPH-045")                  # any agent, no header needed
+    assert "battery_hours" not in served["attributes"]
+    assert "battery_hours" in call("GET", "/acp/products/IEM-010")["attributes"]
+    call("PUT", "/admin/api/config", {"global": [], "products": {}})
+    assert "battery_hours" in call("GET", "/acp/products/HPH-045")["attributes"]

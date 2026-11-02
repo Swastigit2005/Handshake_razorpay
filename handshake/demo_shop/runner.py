@@ -2,8 +2,10 @@
 
 `bootstrap()` makes the demo shop a Handshake customer the same way a real one
 becomes one: a merchant record, an API key, a webhook URL, then the catalogue
-and schema pushed through the SDK over HTTP. The sandbox merchant has a short
-idle window (4 s) so an abandonment is detected while the viewer watches.
+and schema pushed through the SDK over HTTP. The sandbox merchant has a
+45-second idle window. Most abandonments are detected sooner: an agent that
+cancels, or that asks the store for an offer, has stopped shopping by its own
+action, and the journey closes at once.
 """
 
 import random
@@ -18,7 +20,7 @@ from .agent import ShoppingAgent, urllib_json
 from .scenarios import CONDITION_TEXT, OFF_PLAYBOOK, SCENARIOS, judge, mandate_for, mystery
 
 MERCHANT_ID = "m_demo_kaveri"
-SANDBOX_SETTINGS = {"idle_seconds": 4, "reoffer_ttl_seconds": 180,
+SANDBOX_SETTINGS = {"idle_seconds": 45, "reoffer_ttl_seconds": 180,
                     "retry_after_seconds": 3, "timezone": "Asia/Kolkata"}
 # Quiet hours (R-09) are off for the sandbox so a 2 a.m. demo still shows a
 # human-facing recovery. The dashboard's policy panel turns them back on.

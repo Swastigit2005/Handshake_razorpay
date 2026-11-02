@@ -143,6 +143,12 @@ def ingest(merchant, raw_events):
             "journeys": sorted(set(touched))}
 
 
+def _has_shopped(merchant, jid):
+    return any(e["type"] in ("product.view", "checkout.create", "checkout.update",
+                             "checkout.complete")
+               for e in store.journey_events(merchant["merchant_id"], jid))
+
+
 def _apply(merchant, j, ev):
     """Fold one event into its journey's state."""
     mid, jid = merchant["merchant_id"], j["journey_id"]
@@ -198,6 +204,23 @@ def _apply(merchant, j, ev):
         elif status in ("open",) + TERMINAL_OPEN:
             store.update_journey(mid, jid, status="converted", basket_value=total,
                                  closed_at=ev["ts"])
+        return
+
+    if ev["type"] not in ("reoffer.fetch", "checkout.cancel") and status == "recovering":
+        store.consume_reoffer(mid, jid)
+
+    if ev["type"] == "reoffer.fetch" and status == "recovering" \
+            and j["last_event_at"] > j["closed_at"]:
+        # It took the offer, shopped again, and is asking again: that second
+        # stop needs its own diagnosis now, not after an idle timeout.
+        close(merchant, jid, "agent_waiting_for_offer", reclose=True)
+        return
+
+    if ev["type"] == "reoffer.fetch" and status == "open" and _has_shopped(merchant, jid):
+        # An agent asking the shop for an offer has, by its own action, stopped
+        # shopping. That is a better abandonment signal than any silence timer,
+        # which a slow-thinking model agent would trip mid-decision.
+        close(merchant, jid, "agent_waiting_for_offer")
         return
 
     if ev["type"] == "checkout.cancel" and status in ("open", "recovering"):

@@ -403,7 +403,8 @@ def reoffer(ref: str, merchant=Depends(merchant_auth)):
     The merchant serves this to the agent from its own re-offer endpoint."""
     j = _journey_or_404(merchant, ref)
     offer = store.get_reoffer(merchant["merchant_id"], j["journey_id"])
-    if offer is None or offer.get("expired") or j["status"] not in ("recovering",):
+    if offer is None or offer.get("expired") or offer.get("consumed") \
+            or j["status"] not in ("recovering",):
         return JSONResponse({"pending": False, "journey_id": j["journey_id"],
                              "status": j["status"]}, status_code=404)
     return {"pending": True, "journey_id": j["journey_id"], "offer": offer}

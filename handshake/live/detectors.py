@@ -530,13 +530,17 @@ def current_attempt(events):
     tries again, the earlier attempt was already diagnosed; reading it again
     would explain the old stop instead of the new one. Catalogue reads from the
     earlier attempt are kept, since they are still what the agent was shown."""
-    last_offer = max((e["seq"] for e in events
-                      if e["type"] == "reoffer.fetch" and e["http_status"] == 200), default=None)
-    if last_offer is None:
+    # An attempt begins where the agent acts on an offer. Picking an offer up
+    # again afterwards (a repeat poll) starts nothing, so only pickups followed
+    # by real shopping count.
+    acting = {"product.view", "checkout.create", "checkout.update", "checkout.complete"}
+    starts = [e["seq"] for i, e in enumerate(events)
+              if e["type"] == "reoffer.fetch" and e["http_status"] == 200
+              and any(x["type"] in acting for x in events[i + 1:])]
+    if not starts:
         return events, False
+    last_offer = starts[-1]
     later = [e for e in events if e["seq"] > last_offer]
-    if not any(e["type"] != "reoffer.fetch" for e in later):
-        return events, False
     feeds = [e for e in events if e["type"] == "feed.read" and e["seq"] < last_offer][-1:]
     return feeds + later, True
 

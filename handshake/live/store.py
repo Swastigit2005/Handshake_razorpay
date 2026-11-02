@@ -387,7 +387,7 @@ def put_reoffer(merchant_id, journey_id, offer, ttl_seconds):
             " expires_at, fetched_at) VALUES (?,?,?,?,?,?,0)"
             " ON CONFLICT (merchant_id, journey_id) DO UPDATE SET offer_id = excluded.offer_id,"
             " offer = excluded.offer, created_at = excluded.created_at,"
-            " expires_at = excluded.expires_at, fetched_at = 0",
+            " expires_at = excluded.expires_at, fetched_at = 0, consumed_at = 0",
             (merchant_id, journey_id, offer_id, _j(offer), now, now + ttl_seconds))
     return offer
 
@@ -404,7 +404,18 @@ def get_reoffer(merchant_id, journey_id, mark_fetched=True):
     out = load(row["offer"])
     out["fetched_at"] = row["fetched_at"] or (time.time() if mark_fetched else 0)
     out["expired"] = row["expires_at"] < time.time()
+    out["consumed"] = bool(row["consumed_at"])
     return out
+
+
+def consume_reoffer(merchant_id, journey_id):
+    """The agent has acted on its offer. It is not served again: if this attempt
+    fails too, the next offer comes from a fresh diagnosis, not a repeat."""
+    with connect() as conn:
+        cur = conn.execute("UPDATE reoffers SET consumed_at=? WHERE merchant_id=? AND"
+                           " journey_id=? AND fetched_at > 0 AND consumed_at = 0",
+                           (time.time(), merchant_id, journey_id))
+        return cur.rowcount == 1
 
 
 # ---------------------------------------------------------------- ledger ----

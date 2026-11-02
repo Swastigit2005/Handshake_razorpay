@@ -108,6 +108,23 @@ details.study .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margi
 .proposal .why{font-size:12.5px;color:#3D1F86}
 .chip.novel{background:var(--violet-50);color:var(--violet)}
 .reveal.unk{background:var(--amber-50);color:#7A3304}
+.real{background:var(--navy);color:#DCE6FF;border-radius:var(--r16);padding:22px 24px;margin-top:26px}
+.real h2{color:#fff;font-size:22px}
+.real p{color:#B9C6E8;font-size:14.5px;margin:6px 0 0;max-width:78ch}
+.real .cols{display:grid;grid-template-columns:1.1fr 1fr;gap:20px;margin-top:16px}
+@media(max-width:900px){.real .cols{grid-template-columns:1fr}}
+.real ol{margin:0;padding-left:20px;font-size:14px;color:#DCE6FF}
+.real li{margin:6px 0}
+.real code,.real .url{background:rgba(255,255,255,.08);color:#fff;border-radius:6px;padding:2px 7px;font-family:var(--fm);font-size:12.5px}
+.real .url{display:inline-block;padding:6px 10px;font-size:13.5px;user-select:all;word-break:break-all}
+.real a{color:#8FB3FF}
+.feed{background:rgba(255,255,255,.05);border-radius:var(--r12);padding:10px 12px;max-height:320px;overflow:auto}
+.feed .it{border-bottom:1px solid rgba(255,255,255,.08);padding:8px 2px;font-size:13px}
+.feed .it:last-child{border:none}
+.feed .h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.feed .c{font-family:var(--fm);font-weight:600;color:#fff}
+.feed .x{color:#B9C6E8;margin-top:3px}
+.feed .st{font-size:11.5px;font-weight:600;padding:1px 7px;border-radius:999px;background:rgba(255,255,255,.1)}
 </style>
 </head>
 <body>
@@ -128,9 +145,33 @@ details.study .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margi
   shopper you know nothing about into a shop with problems you can't see. Handshake has to work out, from the
   shop's own server log, why it stopped, and what to offer it so it comes back and pays.</p>
 
+  <div class="real" id="real">
+    <h2>Test it with a real AI agent</h2>
+    <p>The strongest test is an agent nobody on this project wrote. Connect Claude (or any MCP client) to the demo
+    store and ask it to buy something. Its reasoning stays in your chat; the store sees only the requests it makes;
+    Handshake sees only the store's traffic. Then compare Claude's own account with Handshake's diagnosis below.</p>
+    <div class="cols">
+      <div>
+        <ol>
+          <li>Optionally, <a href="/shop/admin">break the store</a>: hide a spec on a product, slow its delivery, refuse a payment method.</li>
+          <li>Add the store as a remote MCP server: <span class="url" id="mcpurl">…/mcp</span>
+            <div style="margin-top:6px;font-size:13px;color:#B9C6E8"><b>claude.ai</b>: Settings → Connectors → Add custom connector → paste the URL.<br>
+            <b>Claude Code</b>: <code id="mcpcmd">claude mcp add --transport http kaveri …/mcp</code></div></li>
+          <li>Ask it to shop, the way a person would: <em>"Buy me wireless over-ear headphones with at least 30 hours of battery,
+            under ₹5,000, delivered to 560034. Pay with UPI Reserve. If you can't, check whether the store comes back with an offer."</em></li>
+          <li>Read Claude's explanation, then Handshake's below, or in the <a href="/merchant#sandbox">merchant dashboard</a>.</li>
+        </ol>
+      </div>
+      <div>
+        <div style="font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#8FA3D6;margin-bottom:6px">Real agents on this store, live</div>
+        <div class="feed" id="feed"><div class="x">No agent connected yet.</div></div>
+      </div>
+    </div>
+  </div>
+
   <div class="mystery">
     <div>
-      <h2>Send a mystery shopper</h2>
+      <h2>Or send a scripted mystery shopper</h2>
       <p>A random brief (budget, spending cap, delivery deadline, warranty, how much price movement it tolerates)
       meets a shop with zero to two hidden problems. Four of the thirteen problems are ones nobody wrote a rule
       for. Nobody picks; the truth is revealed only after Handshake answers.</p>
@@ -138,6 +179,7 @@ details.study .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margi
     </div>
     <div class="act">
       <button class="btn big" id="mystery">Send a mystery shopper</button>
+      <span class="muted" style="font-size:12px">A scripted agent: quick, repeatable, but written by us.</span>
       <label>Speed <select id="pace"><option value="0.3">Narrate</option><option value="0.1" selected>Brisk</option><option value="0">Instant</option></select></label>
     </div>
   </div>
@@ -363,15 +405,16 @@ function renderHandshake(v) {
   const n = jn.events.filter(e => e.type !== "reoffer.fetch").length;
   out.push(step("Watching", jn.status === "open" ? "on" : "good",
     `${n} request${n === 1 ? "" : "s"} received through the SDK. Stage reached: <b>${esc(jn.stage)}</b>.` +
-    (jn.status === "open" ? ` <span class="muted">If the agent goes quiet for 4 s, Handshake calls it abandoned.</span>` : "")));
+    (jn.status === "open" ? ` <span class="muted">The journey closes when the agent cancels, asks the shop for an offer, or goes quiet for 45 s.</span>` : "")));
 
   if (jn.status === "converted") {
     out.push(step("Outcome", "good", `<div class="money g">${inr(jn.basket_value)}</div>Bought first time. Nothing to diagnose, and Handshake stays out of the way.`));
   }
   if (dg.cause) {
     const novel = dg.cause.startsWith("N");
-    out.push(step("Abandoned", "good", jn.close_reason === "agent_cancelled"
-      ? "The agent cancelled its checkout session." : "The agent went silent past the idle window."));
+    out.push(step("Abandoned", "good", ({agent_cancelled: "The agent cancelled its checkout session.",
+       agent_waiting_for_offer: "The agent stopped shopping and asked the store for an offer."}[jn.close_reason]
+       || "The agent went silent past the idle window.")));
     const hyps = (dg.hypotheses || []).map(h => `
       <div class="hyp"><span class="c">${esc(h.cause)}</span>
       <div class="bar ${h.score < 0.7 ? "low" : ""}"><i style="width:${Math.round(h.score * 100)}%"></i></div>
@@ -437,6 +480,28 @@ function renderHandshake(v) {
   link.href = `/merchant#journey=${encodeURIComponent(jn.journey_id)}`;
   link.hidden = false;
 }
+
+const mcp = location.origin + "/mcp";
+$("#mcpurl").textContent = mcp;
+$("#mcpcmd").textContent = `claude mcp add --transport http kaveri ${mcp}`;
+const STATUS_TXT = {open: "shopping", converted: "bought", recovering: "offer sent", recovered: "recovered",
+  exception: "held for a person", lost: "lost", abandoned: "stopped"};
+async function feed() {
+  try {
+    const {journeys} = await j("/demo/api/agents");
+    if (!journeys.length) return;
+    $("#feed").innerHTML = journeys.map(x => `<div class="it">
+      <div class="h"><span class="st">${esc(STATUS_TXT[x.status] || x.status)}</span>
+        <span class="mono" style="font-size:12px;color:#8FA3D6">${esc(x.agent_id)}</span>
+        ${x.cause ? `<span class="c">${esc(x.cause)}</span><span>${esc((x.name || "").replace(/_/g, " "))}</span>` : ""}
+        ${x.confidence != null ? `<span style="color:#8FA3D6">${Number(x.confidence).toFixed(2)}</span>` : ""}</div>
+      ${x.explanation ? `<div class="x">${esc(x.explanation)}</div>` : `<div class="x">${x.status === "converted" ? "Bought first time; nothing to explain." : "Still shopping…"}</div>`}
+      ${x.action ? `<div class="x">→ ${esc(x.action)}${x.status === "recovered" ? ` · recovered ₹${Number(x.recovered).toLocaleString("en-IN")}` : ""}</div>` : ""}
+      ${x.proposal && x.status === "exception" ? `<div class="x">→ drafted for a person: “${esc(x.proposal)}”</div>` : ""}
+      <div class="x"><a href="/merchant#journey=${encodeURIComponent(x.journey_id)}">Open the evidence →</a></div></div>`).join("");
+  } catch (e) {}
+}
+feed(); setInterval(feed, 3000);
 
 loadScenarios().catch(e => { $("#grid").innerHTML = `<div class="empty">Could not load scenarios: ${esc(e.message)}</div>`; });
 score();

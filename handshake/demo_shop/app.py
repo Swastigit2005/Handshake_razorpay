@@ -55,6 +55,10 @@ class ShopState:
         self.approvals = {}       # token -> checkout_id
         self.log = {}             # journey_id -> [line]
         self.webhook_secret = ""
+        # The store's own configuration, set by a person on /shop/admin. Unlike
+        # `faults`, nobody injects these per run: every agent that shops meets
+        # the store as it is, exactly like a real merchant's messy catalogue.
+        self.store = {"global": set(), "products": {}}
 
     def reset(self):
         self.__init__()
@@ -64,14 +68,42 @@ class ShopState:
             self.log.setdefault(journey_id or "-", []).append(
                 {"t": time.time(), "kind": kind, "line": line})
 
-    def has(self, journey_id, condition):
-        return condition in self.faults.get(journey_id, set()) \
-            and condition not in self.resolved.get(journey_id, set())
+    def has(self, journey_id, condition, sku=None):
+        """Is this problem live for this agent, on this product?"""
+        if condition in self.resolved.get(journey_id, set()):
+            return False
+        base = _base(sku) if sku else None
+        if condition in self.faults.get(journey_id, set()):
+            # Per-run (demo) faults target the 1.7 L kettle when product-scoped.
+            if condition not in PRODUCT_SCOPED or base in (None, MYSTERY_TARGET):
+                return True
+        if condition in self.store["global"]:
+            return True
+        return bool(base and condition in self.store["products"].get(base, set()))
+
+    def twins(self, journey_id):
+        """SKUs listed twice (variant collision) for this agent."""
+        out = {MYSTERY_TARGET} if self.has(journey_id, "variant_collision", MYSTERY_TARGET) else set()
+        out |= {s for s, c in self.store["products"].items() if "variant_collision" in c
+                and "variant_collision" not in self.resolved.get(journey_id, set())}
+        return out - {s.removesuffix("-B") for s in self.withdrawn.get(journey_id, set())}
 
     def resolve(self, journey_id, *conditions):
         """Mark conditions fixed; with none named, every condition on the journey."""
         names = conditions or tuple(self.faults.get(journey_id, ()))
         self.resolved.setdefault(journey_id, set()).update(names)
+
+
+# Problems that live on one product; the rest apply to the whole checkout.
+PRODUCT_SCOPED = {"missing_attribute", "prose_policy", "variant_collision", "out_of_stock",
+                  "slow_delivery", "price_drift"}
+STORE_WIDE = {"shipping_fee", "unserviceable", "unsupported_payment", "otp_wall",
+              "flaky_error", "insufficient_funds", "silent_decline"}
+MYSTERY_TARGET = "KET-170"
+
+
+def _base(sku):
+    return sku[:-2] if sku.endswith("-B") else sku
 
 
 SHOP = ShopState()
@@ -93,12 +125,15 @@ def _journey(x_agent_journey):
 
 def _served(product, jid):
     """A product record as the storefront serves it to an agent, after this
-    journey's fault and any repairs the shop has applied since."""
+    journey's problems and any repairs the shop has applied since."""
     p = copy.deepcopy(product)
     patch = SHOP.patches.get(jid, {}).get(p["sku"], {})
-    if SHOP.has(jid, "missing_attribute") and p["sku"] == "KET-170":
-        p["attributes"].pop("power_watts", None)
-    if SHOP.has(jid, "prose_policy") and p["sku"] == "KET-170":
+    if SHOP.has(jid, "missing_attribute", p["sku"]):
+        # The feed bug drops the second spec the category requires.
+        required = SCHEMA.get(p["category"], [])
+        if len(required) > 1:
+            p["attributes"].pop(required[1], None)
+    if SHOP.has(jid, "prose_policy", p["sku"]):
         p["policy"] = {"text": "Returns are accepted within a reasonable period, subject to "
                                "inspection and our standard terms.", "structured": False}
     p["attributes"].update(patch)
@@ -110,11 +145,16 @@ def _served(product, jid):
 
 
 def _feed(jid):
-    items = [_served(p, jid) for p in PIM if p["stock"] > 0]
-    if SHOP.has(jid, "variant_collision") and "KET-170-B" not in SHOP.withdrawn.get(jid, set()):
-        twin = _served(pim("KET-170"), jid)
-        twin["sku"] = "KET-170-B"
-        items.insert(1, twin)
+    items = []
+    twins = SHOP.twins(jid)
+    for p in PIM:
+        if p["stock"] <= 0:
+            continue
+        items.append(_served(p, jid))
+        if p["sku"] in twins:
+            twin = _served(p, jid)
+            twin["sku"] = p["sku"] + "-B"
+            items.append(twin)
     return items
 
 
@@ -142,7 +182,7 @@ def feed(category: str = "", q: str = "", x_agent_journey: str = Header(default=
 @shop.get("/acp/products/{sku}")
 def product(sku: str, x_agent_journey: str = Header(default="")):
     jid = _journey(x_agent_journey)
-    base = pim(sku.replace("-B", "")) if sku.endswith("-B") else pim(sku)
+    base = pim(_base(sku))
     if base is None:
         SHOP.note(jid, f"GET /acp/products/{sku} → 404")
         return JSONResponse({"error": "unknown_sku"}, 404)
@@ -157,20 +197,20 @@ async def create_session(request: Request, x_agent_journey: str = Header(default
     jid = _journey(x_agent_journey)
     body = await request.json()
     sku, qty, pincode = body.get("sku", ""), int(body.get("qty", 1)), body.get("pincode", "")
-    base = pim(sku.replace("-B", "")) if sku.endswith("-B") else pim(sku)
+    base = pim(_base(sku))
     if base is None:
         SHOP.note(jid, f"POST /acp/checkout_sessions → 404 unknown_sku")
         return JSONResponse({"error": "unknown_sku"}, 404)
-    if SHOP.has(jid, "unserviceable") and sku not in SHOP.serviceable.get(jid, set()):
+    if SHOP.has(jid, "unserviceable", sku) and sku not in SHOP.serviceable.get(jid, set()):
         SHOP.note(jid, f"POST /acp/checkout_sessions → 422 fulfilment_undetermined")
         return JSONResponse({"error": "fulfilment_undetermined",
                              "detail": "no serviceable route for this address"}, 422)
-    if SHOP.has(jid, "out_of_stock") and sku.startswith("KET-170"):
+    if SHOP.has(jid, "out_of_stock", sku):
         SHOP.note(jid, f"POST /acp/checkout_sessions → 409 insufficient_stock")
         return JSONResponse({"error": "insufficient_stock",
                              "detail": f"{sku} is not available in the requested quantity"}, 409)
     ships = base["fulfilment"]["ships_in_days"]
-    if SHOP.has(jid, "slow_delivery") and sku.startswith("KET-170"):
+    if SHOP.has(jid, "slow_delivery", sku):
         ships = 9                          # a warehouse transfer nobody put in the feed
     cid = f"cs_{uuid.uuid4().hex[:12]}"
     SHOP.sessions[cid] = {"journey": jid, "sku": sku, "qty": qty, "unit": base["price"],
@@ -190,10 +230,10 @@ def update_session(cid: str):
     if s is None:
         return JSONResponse({"error": "unknown_session"}, 404)
     unit = s["unit"]
-    if SHOP.has(s["journey"], "price_drift") and s["locked_total"] is None:
+    if SHOP.has(s["journey"], "price_drift", s["sku"]) and s["locked_total"] is None:
         unit = round(unit * 1.09, 2)
     totals = _totals(unit, s["qty"], s["tax_rate"])
-    if SHOP.has(s["journey"], "shipping_fee") and s["locked_total"] is None:
+    if SHOP.has(s["journey"], "shipping_fee", s["sku"]) and s["locked_total"] is None:
         totals["shipping"] = 149.0         # appears only at re-quote, never in the feed
         totals["total"] = round(totals["total"] + 149.0, 2)
     if s["locked_total"] is not None:
@@ -335,6 +375,62 @@ async def handshake_webhook(request: Request):
     else:
         SHOP.note(jid, f"webhook {event['type']} → acknowledged", "webhook")
     return {"ok": True}
+
+
+# ----------------------------------------------------------------- admin ---
+#
+# The merchant's back office. What is set here is the store's real state: it is
+# not passed to agents, not passed to Handshake, and not recorded per run. An
+# agent that shops afterwards simply meets it, as it would meet a real store.
+
+STORE_PROBLEMS = {
+    "missing_attribute": "drop a required spec from the listing",
+    "prose_policy": "returns policy as a paragraph of prose",
+    "variant_collision": "list it twice, identically",
+    "slow_delivery": "ships in 9 days (the feed doesn't say)",
+    "out_of_stock": "sells out at checkout",
+    "price_drift": "price rises 9% at re-quote",
+    "shipping_fee": "add a ₹149 shipping fee at re-quote",
+    "unserviceable": "can't confirm delivery to any pincode",
+    "unsupported_payment": "refuse UPI Reserve mandates",
+    "otp_wall": "demand an OTP at payment",
+    "flaky_error": "fail payment once with a 503",
+    "insufficient_funds": "decline payment for funds",
+    "silent_decline": "decline payment with no reason code",
+}
+
+
+def store_config():
+    return {"global": sorted(SHOP.store["global"]),
+            "products": {k: sorted(v) for k, v in SHOP.store["products"].items() if v},
+            "problems": STORE_PROBLEMS, "product_scoped": sorted(PRODUCT_SCOPED),
+            "store_wide": sorted(STORE_WIDE),
+            "catalogue": [{"sku": p["sku"], "title": p["title"], "category": p["category"],
+                           "price": p["price"]} for p in PIM]}
+
+
+@shop.get("/admin/api/config")
+def get_store_config():
+    return store_config()
+
+
+@shop.put("/admin/api/config")
+async def put_store_config(request: Request):
+    body = await request.json()
+    glob = {c for c in body.get("global") or [] if c in STORE_WIDE}
+    products = {}
+    for sku, conds in (body.get("products") or {}).items():
+        if pim(sku) is None:
+            return JSONResponse({"error": f"unknown sku {sku!r}"}, 422)
+        products[sku] = {c for c in conds if c in PRODUCT_SCOPED}
+    SHOP.store = {"global": glob, "products": products}
+    return store_config()
+
+
+@shop.get("/admin", response_class=HTMLResponse)
+def admin_page():
+    from pathlib import Path
+    return HTMLResponse((Path(__file__).resolve().parents[1] / "web" / "store_admin.html").read_text())
 
 
 # --------------------------------------------------------------- storefront ---
