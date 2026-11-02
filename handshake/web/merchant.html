@@ -89,7 +89,8 @@ pre{background:var(--navy);color:#DCE6FF;padding:14px 16px;border-radius:var(--r
     what came back. Sign in with your Handshake API key.</p>
     <div class="row"><input id="key" placeholder="hsk_live_…" autocomplete="off" spellcheck="false">
     <button class="btn" id="signin">Sign in</button></div>
-    <div class="row"><button class="btn sec" id="sandbox">Use the sandbox store (Kaveri Home &amp; Tech)</button></div>
+    <div class="row"><button class="btn sec" id="sandbox">Use the sandbox store (Kaveri Home &amp; Tech)</button>
+      <button class="btn sec" id="shopifybtn">Use the connected Shopify store</button></div>
     <div class="err" id="loginerr"></div>
     <p class="small" style="margin-top:18px">Your key stays in this browser. It is sent only to this server's
     <code>/v1</code> API.</p>
@@ -127,6 +128,7 @@ $("#sandbox").onclick = async () => {
   if (!r.ok) { $("#loginerr").textContent = b.error || "sandbox unavailable"; return; }
   signIn(b.api_key);
 };
+$("#shopifybtn").onclick = () => shopifySignIn();
 $("#logout").onclick = () => { store.set("hs_key", null); location.hash = ""; location.reload(); };
 
 const TABS = [["overview", "Overview"], ["journeys", "Journeys"], ["exceptions", "Needs approval"],
@@ -406,7 +408,15 @@ async function hooks(v) {
   </tbody></table></div>`);
 }
 
-if (KEY) signIn(KEY); else if (/journey=|sandbox/.test(location.hash)) $("#sandbox").click();
+async function shopifySignIn() {
+  const r = await fetch("/shopify/api/session"); const b = await r.json();
+  if (!r.ok) { $("#loginerr").textContent = b.error || "Shopify is not connected"; return; }
+  signIn(b.api_key);
+}
+// #shopify, or a Shopify journey link, opens the connected Shopify store's account.
+if (/shopify/.test(location.hash)) shopifySignIn();
+else if (KEY) signIn(KEY);
+else if (/journey=|sandbox/.test(location.hash)) $("#sandbox").click();
 </script>
 </body>
 </html>

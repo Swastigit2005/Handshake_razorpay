@@ -33,7 +33,11 @@ MAX_SESSIONS = 500
 SESSION_TTL = 6 * 3600
 
 
-def _session(sid, client_name, base_url):
+DEMO_STORE = {"prefix": "/shop/acp", "name": "kaveri-home-tech",
+              "title": "Kaveri Home & Tech (demo store)", "instructions": INSTRUCTIONS}
+
+
+def _session(sid, client_name, base_url, shop=DEMO_STORE):
     with _lock:
         now = time.time()
         for old in [k for k, v in SESSIONS.items() if now - v["seen"] > SESSION_TTL]:
@@ -43,8 +47,8 @@ def _session(sid, client_name, base_url):
         s = SESSIONS.get(sid)
         if s is None:
             label = "".join(c for c in (client_name or "mcp").lower() if c.isalnum())[:16] or "mcp"
-            s = {"store": StoreSession(base_url, f"{label}_{sid[:8]}"), "client": client_name,
-                 "created": now, "calls": []}
+            s = {"store": StoreSession(base_url, f"{label}_{sid[:8]}", prefix=shop["prefix"]),
+                 "client": client_name, "shop": shop["name"], "created": now, "calls": []}
             SESSIONS[sid] = s
         s["seen"] = now
         return s
@@ -58,8 +62,9 @@ def _error(rid, code, message):
     return {"jsonrpc": "2.0", "id": rid, "error": {"code": code, "message": message}}
 
 
-def handle(message, sid, base_url):
-    """One JSON-RPC message → (reply or None, session id to return)."""
+def handle(message, sid, base_url, shop=DEMO_STORE):
+    """One JSON-RPC message → (reply or None, session id to return). `shop`
+    chooses which store the agent is connected to."""
     if not isinstance(message, dict) or message.get("jsonrpc") != "2.0":
         return _error(None, -32600, "invalid JSON-RPC request"), sid
     method, rid, params = message.get("method"), message.get("id"), message.get("params") or {}
@@ -69,14 +74,13 @@ def handle(message, sid, base_url):
     if method == "initialize":
         sid = uuid.uuid4().hex
         client = (params.get("clientInfo") or {}).get("name", "mcp")
-        _session(sid, client, base_url)
+        _session(sid, client, base_url, shop)
         asked = params.get("protocolVersion")
         return _result(rid, {
             "protocolVersion": asked if asked in PROTOCOL_VERSIONS else PROTOCOL_VERSIONS[0],
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": "kaveri-home-tech", "title": "Kaveri Home & Tech (demo store)",
-                           "version": __version__},
-            "instructions": INSTRUCTIONS}), sid
+            "serverInfo": {"name": shop["name"], "title": shop["title"], "version": __version__},
+            "instructions": shop["instructions"]}), sid
     if method == "ping":
         return _result(rid, {}), sid
     if method == "tools/list":
@@ -85,7 +89,7 @@ def handle(message, sid, base_url):
     if method == "tools/call":
         if not sid:
             sid = uuid.uuid4().hex                     # tolerate clients that skip the header
-        s = _session(sid, "mcp", base_url)
+        s = _session(sid, "mcp", base_url, shop)
         name = params.get("name")
         if name not in {t["name"] for t in TOOLS}:
             return _error(rid, -32602, f"unknown tool {name!r}"), sid

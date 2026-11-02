@@ -59,6 +59,9 @@ Those decide whether acting is *allowed*. The *why* comes from a separate
 evidence engine that tests 13 causes against what the shop actually served.
 [docs/DIAGNOSIS.md](docs/DIAGNOSIS.md) explains it in a page.
 [docs/INTEGRATION.md](docs/INTEGRATION.md) is the guide for wiring a real store in.
+[docs/SHOPIFY.md](docs/SHOPIFY.md) connects a real Shopify store at `/shopify`.
+[docs/PROOF.md](docs/PROOF.md) records Claude, an agent nobody here wrote, shopping
+the store over MCP, next to Handshake's independent diagnosis.
 [docs/STUDY_PROMPT.md](docs/STUDY_PROMPT.md) is a prompt that turns Claude into a
 tutor for this project, from first principles to production.
 

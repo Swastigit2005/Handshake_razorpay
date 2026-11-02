@@ -33,6 +33,14 @@ services:
           property: connectionString
       - key: HS_TRUST_PROXY
         value: "1"
+      # Shopify: set these in the Render dashboard; sync: false keeps them out
+      # of the repository and makes Render ask for them.
+      - key: SHOPIFY_STORE_DOMAIN
+        sync: false
+      - key: SHOPIFY_CLIENT_ID
+        sync: false
+      - key: SHOPIFY_CLIENT_SECRET
+        sync: false
       # Live plane. The admin token creates real merchants over /v1/merchants;
       # Render generates it once and shows it in the dashboard. The sandbox
       # demo (/demo, the sandbox dashboard login) is on for a public demo URL;

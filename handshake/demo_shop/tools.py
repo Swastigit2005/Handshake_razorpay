@@ -22,12 +22,11 @@ from .agent import urllib_json
 TOOLS = [
     {"name": "search_products",
      "description": "List products in the store. Optional filters: a text query matched "
-                    "against titles, and a category (home_kitchen, audio, "
-                    "laptop_accessories). Returns each product's sku, title, price (INR, "
-                    "before 18% GST), attributes and returns/warranty policy.",
+                    "against titles, and a category. Returns each product's sku, title, "
+                    "price, attributes and returns/warranty policy.",
      "input_schema": {"type": "object", "properties": {
          "query": {"type": "string", "description": "words to match in the title"},
-         "category": {"type": "string", "enum": ["home_kitchen", "audio", "laptop_accessories"]}},
+         "category": {"type": "string", "description": "a category slug"}},
          "additionalProperties": False}},
     {"name": "get_product",
      "description": "Fetch one product's full record by sku: price, attributes, "
@@ -81,8 +80,9 @@ class StoreSession:
     an agent platform would: an agent id and a shopping-session id. A new
     session id starts after each successful purchase."""
 
-    def __init__(self, base_url, agent_id, http=urllib_json, log=None, offer_wait=15.0):
-        self.base = base_url.rstrip("/") + "/shop/acp"
+    def __init__(self, base_url, agent_id, http=urllib_json, log=None, offer_wait=15.0,
+                 prefix="/shop/acp"):
+        self.base = base_url.rstrip("/") + prefix
         self.agent_id = agent_id
         self.journey_id = f"jr_{uuid.uuid4().hex[:14]}"
         self.http = http
@@ -104,15 +104,13 @@ class StoreSession:
 
     def _dispatch(self, name, a):
         if name == "search_products":
-            q = []
-            if a.get("category"):
-                q.append(f"category={a['category']}")
-            if a.get("query"):
-                q.append(f"q={a['query']}")
-            status, body = self._call("GET", "/feed" + ("?" + "&".join(q) if q else ""))
+            from urllib.parse import urlencode
+            params = {k: v for k, v in (("category", a.get("category")), ("q", a.get("query"))) if v}
+            status, body = self._call("GET", "/feed" + ("?" + urlencode(params) if params else ""))
             return {"status": status, **body}
         if name == "get_product":
-            status, body = self._call("GET", f"/products/{a['sku']}")
+            from urllib.parse import quote
+            status, body = self._call("GET", f"/products/{quote(str(a['sku']), safe='')}")
             return {"status": status, **body}
         if name == "create_checkout":
             body = {"sku": a["sku"], "qty": int(a.get("quantity") or 1),

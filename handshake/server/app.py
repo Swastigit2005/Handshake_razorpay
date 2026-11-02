@@ -676,6 +676,22 @@ from fastapi.responses import Response                    # noqa: E402
 from ..demo_shop import mcp_server                        # noqa: E402
 
 
+def _mcp_reply(payload, sid, base, shop=mcp_server.DEMO_STORE):
+    if isinstance(payload, list):
+        replies = []
+        for message in payload:
+            reply, sid = mcp_server.handle(message, sid, base, shop)
+            if reply is not None:
+                replies.append(reply)
+        body = replies or None
+    else:
+        body, sid = mcp_server.handle(payload, sid, base, shop)
+    headers = {"Mcp-Session-Id": sid} if sid else {}
+    if body is None:
+        return Response(status_code=202, headers=headers)
+    return JSONResponse(body, headers=headers)
+
+
 @app.post("/mcp", include_in_schema=False)
 def mcp_endpoint(request: Request, payload: Any = Body(...),
                  mcp_session_id: str = Header(default="")):
@@ -683,30 +699,21 @@ def mcp_endpoint(request: Request, payload: Any = Body(...),
         return JSONResponse({"error": "the sandbox store is disabled"}, 403)
     base = _self_url(request)
     demo_runner.bootstrap(base)
-    sid = mcp_session_id
-    if isinstance(payload, list):
-        replies = []
-        for message in payload:
-            reply, sid = mcp_server.handle(message, sid, base)
-            if reply is not None:
-                replies.append(reply)
-        body = replies or None
-    else:
-        body, sid = mcp_server.handle(payload, sid, base)
-    headers = {"Mcp-Session-Id": sid} if sid else {}
-    if body is None:
-        return Response(status_code=202, headers=headers)
-    return JSONResponse(body, headers=headers)
+    return _mcp_reply(payload, mcp_session_id, base)
 
 
 @app.get("/demo/api/agents", include_in_schema=False)
 def demo_real_agents(limit: int = 20):
     """Journeys from agents connected over MCP — agents nobody here wrote — with
     what Handshake made of each, newest first."""
+    return _agent_feed(demo_runner.MERCHANT_ID if demo_runner.merchant() else None, limit)
+
+
+def _agent_feed(merchant_id, limit=20):
     agents = {s["store"].agent_id: s.get("client") for s in list(mcp_server.SESSIONS.values())}
     out = []
-    if agents and demo_runner.merchant():
-        for j in live_store.list_journeys(demo_runner.MERCHANT_ID, None, 300, 0):
+    if agents and merchant_id:
+        for j in live_store.list_journeys(merchant_id, None, 300, 0):
             if j["agent_id"] not in agents:
                 continue
             dg, vd = j["diagnosis"] or {}, j["verdict"] or {}
@@ -735,6 +742,73 @@ def mcp_stream():
 def mcp_close(mcp_session_id: str = Header(default="")):
     mcp_server.SESSIONS.pop(mcp_session_id, None)
     return Response(status_code=204)
+
+
+# --------------------------------------------------------------- Shopify ---
+# A real Shopify store behind an agent-facing checkout. Routes on the main app
+# are registered before the /shopify mount, which would otherwise swallow them.
+
+from ..shopify import gateway as shopify_gw               # noqa: E402
+
+
+def _shopify_store():
+    shop = shopify_gw.S.shop or {}
+    name = shop.get("name") or "Shopify store"
+    return {"prefix": "/shopify/acp", "name": "shopify-" + shopify_gw.cat.slug(name)[:30],
+            "title": f"{name} (Shopify)",
+            "instructions": (f"You are connected to {name}, a real Shopify store. Prices are in "
+                             f"{shop.get('currencyCode') or 'the store currency'}. To buy: search "
+                             "or get a product, create_checkout (declare your user's spending "
+                             "cap), refresh_checkout to confirm the final total, then pay. If you "
+                             "decide not to buy, you may call check_for_offer: the store "
+                             "sometimes fixes a problem and comes back.")}
+
+
+@app.get("/shopify/api/status", include_in_schema=False)
+def shopify_status(request: Request):
+    shopify_gw.ensure(_self_url(request))
+    return {**shopify_gw.status(), "mcp_url": str(request.base_url).rstrip("/") + "/shopify/mcp"}
+
+
+@app.post("/shopify/api/sync", include_in_schema=False)
+def shopify_sync(request: Request):
+    if not shopify_gw.ensure(_self_url(request)):
+        return JSONResponse(shopify_gw.status(), 503)
+    shopify_gw.refresh(force=True)
+    return shopify_gw.status()
+
+
+@app.get("/shopify/api/session", include_in_schema=False)
+def shopify_session(request: Request):
+    """The connected store's dashboard key, for one-click sign-in. A development
+    store holds test orders only; turn this off with HS_DEMO_SANDBOX=0."""
+    if not SANDBOX:
+        return JSONResponse({"error": "disabled"}, 403)
+    if not shopify_gw.ensure(_self_url(request)):
+        return JSONResponse({"error": shopify_gw.S.error or "Shopify is not connected"}, 503)
+    return {"api_key": shopify_gw.S.api_key, "merchant_id": shopify_gw.S.merchant_id}
+
+
+@app.get("/shopify/api/agents", include_in_schema=False)
+def shopify_agents(limit: int = 20):
+    return _agent_feed(shopify_gw.S.merchant_id, limit)
+
+
+@app.post("/shopify/mcp", include_in_schema=False)
+def shopify_mcp(request: Request, payload: Any = Body(...),
+                mcp_session_id: str = Header(default="")):
+    base = _self_url(request)
+    if not shopify_gw.ensure(base):
+        return JSONResponse({"error": shopify_gw.S.error or "Shopify is not connected"}, 503)
+    return _mcp_reply(payload, mcp_session_id, base, _shopify_store())
+
+
+@app.get("/shopify/mcp", include_in_schema=False)
+def shopify_mcp_stream():
+    return JSONResponse({"error": "POST JSON-RPC instead"}, 405, headers={"Allow": "POST"})
+
+
+app.mount("/shopify", shopify_gw.app)
 
 
 @app.get("/demo/api/sandbox", include_in_schema=False)

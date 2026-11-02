@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shopify · Handshake</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/web/hs.css">
+<style>
+.wrap{padding-block:26px 50px}
+.lead{color:var(--tx2);max-width:74ch;margin:10px 0 0}
+.two{display:grid;grid-template-columns:1.1fr 1fr;gap:16px;margin-top:20px;align-items:start}
+@media(max-width:980px){.two{grid-template-columns:1fr}}
+ol{padding-left:20px;margin:0} li{margin:7px 0;font-size:14px}
+.url{display:inline-block;background:var(--bg3);border-radius:6px;padding:5px 9px;font-family:var(--fm);
+  font-size:13px;user-select:all;word-break:break-all}
+.kv{display:grid;grid-template-columns:140px 1fr;gap:6px 12px;font-size:14px}
+.kv span:nth-child(odd){color:var(--tx3)}
+.it{border-bottom:1px solid var(--line2);padding:9px 0;font-size:13.5px}
+.it:last-child{border:none}
+pre{background:var(--navy);color:#DCE6FF;padding:12px 14px;border-radius:8px;overflow-x:auto;font:12.5px/1.55 var(--fm)}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="shell">
+  <a class="mark" href="/"><svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#050505"/><path d="M11 9v14M11 9h4a3.5 3.5 0 0 1 0 7h-4" stroke="#4287FF" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M21 23V9M21 23h-4a3.5 3.5 0 0 1 0-7h4" stroke="#00BD6E" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>Handshake</a>
+  <div class="navlinks">
+    <a href="/">Overview</a><a href="/demo">Live demo</a><a href="/merchant">Merchant dashboard</a>
+    <a class="on" href="/shopify/">Shopify</a>
+  </div>
+</div></nav>
+<main class="shell wrap">
+  <div class="eyebrow">Real store</div>
+  <h1 id="title">Your Shopify store, open to AI agents</h1>
+  <p class="lead">Shopify checkout ends on a page a person fills in, so an AI agent can't buy from it directly.
+  Handshake runs an agent-facing checkout in front of your store, backed by your real products, Shopify's own
+  price and tax calculation, and real (test) orders in your admin. Connect Claude to it, and Handshake explains
+  every agent that stops, from the traffic alone.</p>
+
+  <div id="body"><div class="empty">Checking the connection…</div></div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+const SETUP = `<div class="two">
+  <div class="card"><div class="hd"><h3>Connect a store (about 10 minutes)</h3></div><div class="bd"><ol>
+    <li>In Shopify's <b>Dev Dashboard</b> (<a href="https://dev.shopify.com" target="_blank" rel="noopener">dev.shopify.com</a>),
+      create a free <b>development store</b>. Create it there, not from a store admin: the app and the store must be in the same organisation.</li>
+    <li>Add a few products. Give them a <b>Product type</b> (e.g. <i>Headphones</i>), and specs as metafields
+      under <b>Settings → Custom data → Products</b> (namespace <code>custom</code>, e.g. <code>battery_hours</code>,
+      <code>driver_mm</code>). Optional: <code>ships_in_days</code>, <code>returns_days</code>, <code>warranty_months</code>.</li>
+    <li>In the Dev Dashboard, <b>create an app</b>, give it Admin API scopes
+      <code>read_products</code>, <code>write_products</code>, <code>read_inventory</code>, <code>write_draft_orders</code>,
+      <code>read_orders</code>, <b>release a version</b>, and <b>install it</b> on your development store.</li>
+    <li>From the app's settings, copy the <b>Client ID</b> and <b>Client secret</b>.</li>
+    <li>Add them to the server's environment (in <code>.env</code> locally; on Render under Environment). Never paste the secret anywhere else:
+      <pre>SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
+SHOPIFY_CLIENT_ID=…
+SHOPIFY_CLIENT_SECRET=…</pre>
+      <span class="small">Handshake exchanges these for a 24-hour access token and renews it on its own. A legacy app's
+      permanent <code>shpat_…</code> token also works, as <code>SHOPIFY_ADMIN_TOKEN</code>.</span></li>
+    <li>Restart, and reload this page.</li>
+  </ol></div></div>
+  <div class="card"><div class="hd"><h3>What happens in your store</h3></div><div class="bd small">
+    <p><b>Reads</b> your active products, variants, stock and spec metafields. A spec most products of a type carry
+    is treated as required for that type.</p>
+    <p><b>Quotes</b> are Shopify's own calculation (subtotal, tax, shipping rates), live on every re-quote. Change
+    a price in Shopify admin while an agent is checking out, and that's a real price drift.</p>
+    <p><b>Orders</b> are real draft orders completed in your admin, tagged <code>handshake</code> and <code>ai-agent</code>.
+    In a development store they're test orders; nothing is charged.</p>
+    <p><b>Repairs:</b> if Handshake works out that an agent left because a spec was missing and the value is known,
+    it can write that metafield back to the product.</p>
+  </div></div>
+</div>`;
+
+async function load() {
+  const s = await (await fetch("/shopify/api/status")).json();
+  if (!s.configured) { $("#body").innerHTML = SETUP; return; }
+  if (!s.connected) {
+    $("#body").innerHTML = `<div class="card" style="margin-top:20px"><div class="bd"><b style="color:var(--red)">Couldn't connect to Shopify.</b>
+      <p class="small">${esc(s.error)}</p></div></div>` + SETUP;
+    return;
+  }
+  $("#title").textContent = `${s.shop}, open to AI agents`;
+  const gaps = s.gaps || [];
+  $("#body").innerHTML = `<div class="two">
+    <div style="display:grid;gap:16px">
+      <div class="card"><div class="hd"><h3>Connected</h3><div class="sp"></div><span class="chip green"><span class="dot"></span>live</span></div><div class="bd"><div class="kv">
+        <span>Store</span><span><b>${esc(s.shop)}</b> · <span class="mono">${esc(s.domain)}</span></span>
+        <span>Catalogue</span><span>${s.products} products, ${s.variants} variants · ${esc(s.categories.join(", ") || "no product types")}</span>
+        <span>Currency</span><span>${esc(s.currency)}</span>
+        <span>Access</span><span>${esc(s.auth_mode || "")}</span>
+        <span>Payment methods</span><span>${esc(s.accepted_methods.join(", "))}</span>
+        <span>Required specs</span><span>${Object.entries(s.schema).map(([k, v]) => `<b>${esc(k)}</b>: ${esc(v.join(", "))}`).join("<br>") || "<span class='muted'>none learned yet: give at least two products of a type the same spec metafields</span>"}</span>
+      </div><div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+        <button class="btn sec sm" id="sync">Re-read the catalogue</button>
+        <a class="btn sec sm" href="/merchant#shopify">Open this store's dashboard</a></div></div></div>
+      <div class="card"><div class="hd"><h3>Let Claude shop it</h3></div><div class="bd"><ol>
+        <li>Add this as a remote MCP server: <span class="url">${esc(s.mcp_url)}</span><br>
+          <span class="small">claude.ai: Settings → Connectors → Add custom connector. Claude Code:
+          <code>claude mcp add --transport http shop ${esc(s.mcp_url)}</code></span></li>
+        <li>Ask it to buy something from your catalogue, with real requirements.</li>
+        <li>Change something in Shopify admin first if you like: delete a spec, set stock to 0, raise a price mid-checkout.</li>
+      </ol></div></div>
+    </div>
+    <div style="display:grid;gap:16px">
+      <div class="card"><div class="hd"><h3>Readiness: listings agents will walk away from</h3></div><div class="bd">
+        ${gaps.length ? gaps.map(g => `<div class="it"><b class="mono">${esc(g.sku)}</b> ${esc(g.title)}<br>
+          <span class="small">missing <b>${esc(g.missing.join(", "))}</b>, which other ${esc(g.category.replace(/_/g, " "))} listings carry</span></div>`).join("")
+          : `<div class="small">No gaps found against the specs your catalogue uses.</div>`}
+      </div></div>
+      <div class="card"><div class="hd"><h3>Agents on this store, live</h3></div><div class="bd" id="feed"><div class="small">No agent connected yet.</div></div></div>
+    </div></div>`;
+  $("#sync").onclick = async () => { $("#sync").textContent = "Reading…"; await fetch("/shopify/api/sync", {method: "POST"}); load(); };
+}
+
+async function feed() {
+  try {
+    const {journeys} = await (await fetch("/shopify/api/agents")).json();
+    if (!journeys.length || !$("#feed")) return;
+    $("#feed").innerHTML = journeys.map(x => `<div class="it">
+      <span class="chip">${esc(x.status)}</span> <span class="mono small">${esc(x.agent_id)}</span>
+      ${x.cause ? `<b class="mono">${esc(x.cause)}</b> ${esc((x.name || "").replace(/_/g, " "))}` : ""}
+      <div class="small">${esc(x.explanation || (x.status === "converted" ? "Bought; nothing to explain." : "Still shopping…"))}</div>
+      ${x.proposal && x.status === "exception" ? `<div class="small">Drafted for you: “${esc(x.proposal)}”</div>` : ""}
+      <a class="small" href="/merchant#journey=${encodeURIComponent(x.journey_id)}&store=shopify">Evidence →</a></div>`).join("");
+  } catch (e) {}
+}
+load(); feed(); setInterval(feed, 3000);
+</script>
+</body>
+</html>
