@@ -86,6 +86,28 @@
 .private{font-size:11px;font-weight:600;color:var(--amber);background:var(--amber-50);
   padding:2px 7px;border-radius:999px;white-space:nowrap}
 .foot{font-size:13px;color:var(--tx3);padding:0 0 40px}
+.mystery{display:grid;grid-template-columns:1fr auto;gap:18px;align-items:center;background:#fff;
+  border:1px solid var(--line);border-radius:var(--r16);padding:20px 22px;margin-top:26px;box-shadow:var(--e1)}
+.mystery h2{font-size:22px}
+.mystery p{margin:6px 0 0;color:var(--tx2);font-size:14.5px;max-width:70ch}
+.mystery .act{display:flex;flex-direction:column;gap:8px;align-items:stretch;min-width:220px}
+.btn.big{font-size:16px;padding:13px 22px}
+.score{display:flex;gap:16px;flex-wrap:wrap;margin-top:12px;font-size:13px;color:var(--tx2)}
+.score b{font-family:var(--fd);font-size:20px;color:var(--ink);margin-right:4px}
+.score .g b{color:var(--green)} .score .r b{color:var(--red)} .score .a b{color:var(--amber)}
+@media(max-width:760px){.mystery{grid-template-columns:1fr}}
+details.study{margin-top:18px;background:#fff;border:1px solid var(--line);border-radius:var(--r12);padding:4px 16px}
+details.study summary{cursor:pointer;padding:12px 0;font-weight:600;color:var(--ink)}
+details.study .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:4px 0 12px}
+.veil{position:relative}
+.veil.on .bd{filter:blur(6px);user-select:none;pointer-events:none}
+.veil .peek{position:absolute;inset:56px 14px auto;display:none;text-align:center;font-size:13px;color:var(--tx2)}
+.veil.on .peek{display:block}
+.proposal{border:1px solid var(--violet);background:var(--violet-50);border-radius:var(--r12);padding:12px 14px}
+.proposal textarea{width:100%;min-height:64px;margin:8px 0;font:13.5px var(--f)}
+.proposal .why{font-size:12.5px;color:#3D1F86}
+.chip.novel{background:var(--violet-50);color:var(--violet)}
+.reveal.unk{background:var(--amber-50);color:#7A3304}
 </style>
 </head>
 <body>
@@ -101,58 +123,69 @@
 <main class="shell">
 <section class="hero">
   <h1>Why did the AI shopper stop?</h1>
-  <p class="dek">A person who abandons a cart leaves no reason. An AI agent doesn't say why either, but it
-  leaves something a person never does: a complete record of every request it made and every answer it got.
-  Pick a way for checkout to go wrong, and a real agent will shop a real (fictional) store over HTTP while you
-  watch all three sides.</p>
+  <p class="dek">A person who abandons a cart leaves no reason. An AI agent doesn't say why either. But it leaves
+  something a person never does: a complete record of every request it made and every answer it got. Send a
+  shopper you know nothing about into a shop with problems you can't see. Handshake has to work out, from the
+  shop's own server log, why it stopped, and what to offer it so it comes back and pays.</p>
+
+  <div class="mystery">
+    <div>
+      <h2>Send a mystery shopper</h2>
+      <p>A random brief (budget, spending cap, delivery deadline, warranty, how much price movement it tolerates)
+      meets a shop with zero to two hidden problems. Four of the thirteen problems are ones nobody wrote a rule
+      for. Nobody picks; the truth is revealed only after Handshake answers.</p>
+      <div class="score" id="score"></div>
+    </div>
+    <div class="act">
+      <button class="btn big" id="mystery">Send a mystery shopper</button>
+      <label>Speed <select id="pace"><option value="0.3">Narrate</option><option value="0.1" selected>Brisk</option><option value="0">Instant</option></select></label>
+    </div>
+  </div>
+
+  <details class="study" id="study">
+    <summary>Or study one cause at a time (you choose what goes wrong)</summary>
+    <div class="row"><span class="muted">Teaching mode: you know the answer in advance. The mystery shopper is the real test.</span>
+      <div class="sp"></div><button class="btn sec" id="go" disabled>Run this scenario</button></div>
+    <div class="grid" id="grid"><div class="empty">Loading scenarios…</div></div>
+    <div style="height:14px"></div>
+  </details>
 
   <div class="twoq">
     <div class="q">
-      <div class="n">QUESTION 1 · DIAGNOSIS</div>
-      <h3>Why did it stop?</h3>
-      <p>The evidence engine. It reads only what the shop's server saw, plus the shop's own catalogue,
-      and tests 13 possible causes against it.</p>
-      <ul><li>An explicit reason on the response, like <code>402 insufficient_funds</code>, is trusted first</li>
-      <li>Then behaviour: <em>where</em> it stopped, measured against what it was served</li>
-      <li>What the agent <em>says</em> only counts if the traffic agrees</li>
-      <li>No evidence: answer is <b>UNKNOWN</b>, never a guess</li></ul>
+      <div class="n">QUESTION 1 · WHY DID IT STOP?</div>
+      <h3>Evidence, not a menu</h3>
+      <p>Handshake reads only what the shop's server saw, plus the shop's catalogue. It asks three kinds of question:</p>
+      <ul><li><b>Known signatures:</b> 13 causes with exact fingerprints, like a <code>402 insufficient_funds</code> or a spec missing from the record served</li>
+      <li><b>General questions:</b> did the shop refuse the agent's last request? Was what the agent saw the worst of its options on some dimension? These need no rule written in advance.</li>
+      <li><b>An analyst model</b> (when a key is configured) for traces nothing else explains. It must cite the events, and it may name a cause nobody listed.</li></ul>
     </div>
     <div class="arrow">
       <svg width="34" height="18" viewBox="0 0 34 18"><path d="M1 9h30m-7-7 7 7-7 7" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
-      a cause and a confidence
+      a cause, a confidence and a drafted fix
     </div>
     <div class="q rules">
-      <div class="n">QUESTION 2 · THE 11 RULES</div>
-      <h3>Should we do anything?</h3>
-      <p>The policy gate. It doesn't work out <em>why</em>; it decides whether acting is
-      <em>allowed</em>. It's a fixed checklist with no AI in it.</p>
-      <ul><li>Is the diagnosis confident enough? (R-10)</li>
-      <li>Have we already tried too often, or given away too much margin? (R-01, R-02, R-04)</li>
-      <li>Is it worth more than it costs? Does it need a human's consent? (R-05, R-07, R-09)</li>
-      <li>Has an operator pulled the kill switch? (R-11)</li></ul>
+      <div class="n">QUESTION 2 · SHOULD WE ACT?</div>
+      <h3>11 fixed rules, then a person</h3>
+      <p>The rules don't diagnose anything. They decide whether acting is <em>allowed</em>.</p>
+      <ul><li>A confident, known cause with a safe fix: Handshake acts on its own, inside the limits</li>
+      <li>Anything outside the playbook, or not confident enough: Handshake <b>drafts</b> the re-offer, and a person approves it</li>
+      <li>A model can explain and draft; it can never move money</li></ul>
     </div>
   </div>
-</section>
-
-<section class="picker">
-  <div class="row">
-    <h2>1. Choose what goes wrong</h2>
-    <div class="sp"></div>
-    <label>Speed <select id="pace"><option value="0.45">Narrate</option><option value="0.15">Brisk</option><option value="0">Instant</option></select></label>
-    <button class="btn" id="go" disabled>Send the agent shopping</button>
-  </div>
-  <div class="grid" id="grid"><div class="empty">Loading scenarios…</div></div>
 </section>
 
 <section>
   <div class="row" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:30px">
-    <h2>2. Watch from three sides</h2>
+    <h2>Watch from three sides</h2>
     <span class="muted" id="runmeta"></span>
   </div>
   <div class="stage">
-    <div class="card col">
-      <div class="hd"><div class="who"><h3>The AI shopper</h3><small>its own reasoning</small></div><div class="sp"></div><span class="private">private · never sent</span></div>
-      <div class="bd" id="agent"><div class="empty">Pick a scenario and send the agent shopping.</div></div>
+    <div class="card col veil" id="agentcard">
+      <div class="hd"><div class="who"><h3>The AI shopper</h3><small>its own reasoning</small></div><div class="sp"></div>
+        <span class="private">private · never sent</span>
+        <button class="btn sec sm" id="peekbtn" hidden>Peek</button></div>
+      <div class="peek">Hidden until Handshake answers, so you can't see the truth before it does.</div>
+      <div class="bd" id="agent"><div class="empty">Send a shopper to begin.</div></div>
     </div>
     <div class="card col">
       <div class="hd"><div class="who"><h3>The shop's server</h3><small>Kaveri Home &amp; Tech's own log</small></div></div>
@@ -164,10 +197,10 @@
     </div>
   </div>
 </section>
-<p class="foot">The agent's column is shown so you can check Handshake's answer against the truth. Handshake never
-receives it, and never receives the scenario name: the store is instrumented with the public SDK, which forwards
-request and response bodies and nothing else. Re-offers work because this demo agent polls for them; no agent
-platform does that today.</p>
+<p class="foot">Handshake never receives the agent's reasoning or the hidden conditions: the store is instrumented
+with the public SDK, which forwards request and response bodies and nothing else. The verdict compares Handshake's
+answer with the agent's own private record of why it stopped. Re-offers work because this demo agent polls for
+them; no agent platform does that today.</p>
 </main>
 
 <script>
@@ -175,13 +208,36 @@ const $ = s => document.querySelector(s);
 const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const inr = v => "₹" + Number(v || 0).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2});
 const FAM = {catalogue: "blue", checkout: "violet", payment: "amber", trust: "red", control: "green"};
-let chosen = null, timer = null, runId = null;
+const TRUTH = {
+  A1: "a spec was missing from the listing", A2: "two listings looked identical", A3: "the price moved",
+  A4: "the basket was over its spending cap", A5: "payment needed an OTP", A6: "a server error it wouldn't retry",
+  A7: "the returns policy was prose", A8: "delivery couldn't be confirmed", B1: "the payment was declined for funds",
+  "decline:no_reason": "the payment was declined with no reason", false_claim: "nothing — it lied about the reason",
+  "slow:ships_in_days": "delivery was too slow for its deadline",
+  "refused:payment_method_unsupported": "the shop refused its payment method",
+  "refused:insufficient_stock": "the item sold out at checkout",
+  "brief:warranty_months": "the warranty was shorter than its brief", "brief:returns_days": "the returns window was too short",
+  "brief:capacity_l": "the capacity was too small", "brief:power_watts": "the wattage was too low", no_match: "nothing matched its brief"};
+const truthText = t => TRUTH[t] || t;
+let chosen = null, timer = null, runId = null, mode = "mystery", peeked = false, approving = false;
 
 async function j(url, opts) {
   const r = await fetch(url, opts);
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(body.error?.message || body.error || r.status);
   return body;
+}
+
+async function score() {
+  try {
+    const s = await j("/demo/api/scorecard");
+    if (!s.stopped) { $("#score").innerHTML = `<span>No mystery shoppers have stopped yet on this server.</span>`; return; }
+    $("#score").innerHTML = `<span class="g"><b>${s.correct}</b>explained correctly</span>
+      <span class="a"><b>${s.honest_unknown}</b>honest "not enough evidence"</span>
+      <span class="r"><b>${s.wrong}</b>wrong</span>
+      <span><b>${s.recovered}</b>sales recovered</span>
+      <span class="muted">of ${s.stopped} that stopped · ${s.analyst ? "analyst model on" : "analyst model off (no key)"}</span>`;
+  } catch (e) {}
 }
 
 async function loadScenarios() {
@@ -197,47 +253,60 @@ async function loadScenarios() {
     chosen = b.dataset.id;
     $("#go").disabled = false;
   });
-  // ?scenario=otp_wall&autorun=1 — a link that starts a specific story, for presenting.
+  // ?scenario=otp_wall&autorun=1 starts a teaching scenario; ?autorun=1 alone a mystery.
   const qs = new URLSearchParams(location.search);
-  const pre = document.querySelector(`.sc[data-id="${CSS.escape(qs.get("scenario") || "missing_attribute")}"]`);
-  if (pre) pre.click();
   if (qs.get("pace")) $("#pace").value = qs.get("pace");
-  if (pre && qs.get("autorun")) $("#go").click();
-  if (qs.get("run")) { runId = qs.get("run"); timer = setInterval(poll, 450); poll(); }
+  const pre = qs.get("scenario") && document.querySelector(`.sc[data-id="${CSS.escape(qs.get("scenario"))}"]`);
+  if (pre) { $("#study").open = true; pre.click(); }
+  if (qs.get("autorun")) (pre ? $("#go") : $("#mystery")).click();
+  if (qs.get("run")) { runId = qs.get("run"); mode = qs.get("scenario") ? "study" : "mystery"; begin(); }
 }
 
-$("#go").onclick = async () => {
-  if (!chosen) return;
-  $("#go").disabled = true;
+function begin() {
+  peeked = false;
+  $("#agentcard").classList.toggle("on", mode === "mystery");
+  $("#peekbtn").hidden = mode !== "mystery";
+  clearInterval(timer);
+  timer = setInterval(poll, 500);
+  poll();
+}
+
+async function start(scenario) {
+  $("#mystery").disabled = $("#go").disabled = true;
   $("#agent").innerHTML = $("#shop").innerHTML = "";
+  $("#agent").dataset.n = $("#shop").dataset.n = "";
   $("#hs").innerHTML = `<div class="empty">Watching the traffic…</div>`;
+  $("#hs").dataset.h = "";
   $("#openj").hidden = true;
+  mode = scenario === "mystery" ? "mystery" : "study";
   try {
     const r = await j("/demo/api/runs", {method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({scenario: chosen, pace: Number($("#pace").value)})});
+      body: JSON.stringify({scenario, pace: Number($("#pace").value)})});
     runId = r.run_id;
     $("#runmeta").textContent = `agent ${r.agent_id} · journey ${r.journey_id}`;
-    clearInterval(timer);
-    timer = setInterval(poll, 450);
-    poll();
+    history.replaceState(null, "", `?run=${r.run_id}` + (mode === "study" ? `&scenario=${scenario}` : ""));
+    begin();
   } catch (e) {
     $("#hs").innerHTML = `<div class="empty">Could not start: ${esc(e.message)}</div>`;
-    $("#go").disabled = false;
+    $("#mystery").disabled = false; $("#go").disabled = !chosen;
   }
-};
+}
+$("#mystery").onclick = () => start("mystery");
+$("#go").onclick = () => chosen && start(chosen);
+$("#peekbtn").onclick = () => { peeked = true; poll(); };
 
 let settled = 0;
 async function poll() {
   if (!runId) return;
   let v;
-  try { v = await j(`/demo/api/runs/${runId}`); } catch (e) { return; }
-  renderAgent(v.thoughts);
+  try { v = await j(`/demo/api/runs/${runId}${peeked ? "?peek=1" : ""}`); } catch (e) { return; }
+  renderAgent(v.thoughts, v.sealed);
   renderShop(v.shop_log);
   renderHandshake(v);
-  const st = v.journey?.status;
-  const final = v.status === "done" && st && !["open", "abandoned"].includes(st);
-  if (final || (v.status === "done" && !v.journey)) {
-    if (++settled > 4) { clearInterval(timer); timer = null; settled = 0; $("#go").disabled = false; }
+  if (!v.sealed) { $("#agentcard").classList.remove("on"); $("#peekbtn").hidden = true; }
+  if (v.judgement && v.status === "done") {
+    if (++settled > 3) { clearInterval(timer); timer = null; settled = 0;
+      $("#mystery").disabled = false; $("#go").disabled = !chosen; score(); }
   }
 }
 
@@ -249,9 +318,10 @@ function keepBottom(el, html) {
   if (atEnd) el.scrollTop = el.scrollHeight;
 }
 
-function renderAgent(ts) {
-  keepBottom($("#agent"), ts.map(t => `<div class="thought ${esc(t.kind)} fade">${esc(t.text)}</div>`).join("")
-    || `<div class="empty">Starting…</div>`);
+function renderAgent(ts, sealed) {
+  keepBottom($("#agent"), sealed ? `<div class="thought">…</div><div class="thought">…</div><div class="thought">…</div>`
+    : ts.map(t => `<div class="thought ${esc(t.kind)} fade">${esc(t.text)}</div>`).join("")
+      || `<div class="empty">Starting…</div>`);
 }
 
 function renderShop(lines) {
@@ -265,9 +335,21 @@ function step(label, cls, body) {
   return `<div class="step ${cls}"><div class="lbl">${label}</div><div class="body">${body}</div></div>`;
 }
 
+async function approve() {
+  if (approving) return;
+  approving = true;
+  const msg = $("#propmsg") ? $("#propmsg").value.trim() : "";
+  try {
+    await j(`/demo/api/runs/${runId}/approve`, {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({message: msg || null})});
+    $("#hs").dataset.h = "";
+  } catch (e) { alertBox(e.message); }
+  approving = false;
+}
+function alertBox(text) { const el = $("#propnote"); if (el) el.textContent = text; }
+
 function renderHandshake(v) {
   const jn = v.journey;
-  const meta = v.scenario_meta;
   if (!jn) { $("#hs").innerHTML = `<div class="empty">Waiting for the first request to reach Handshake…</div>`; return; }
   const dg = jn.diagnosis || {}, vd = jn.verdict || {}, dir = jn.directive || {};
   const out = [];
@@ -280,6 +362,7 @@ function renderHandshake(v) {
     out.push(step("Outcome", "good", `<div class="money g">${inr(jn.basket_value)}</div>Bought first time. Nothing to diagnose, and Handshake stays out of the way.`));
   }
   if (dg.cause) {
+    const novel = dg.cause.startsWith("N");
     out.push(step("Abandoned", "good", jn.close_reason === "agent_cancelled"
       ? "The agent cancelled its checkout session." : "The agent went silent past the idle window."));
     const hyps = (dg.hypotheses || []).map(h => `
@@ -293,6 +376,8 @@ function renderHandshake(v) {
     out.push(step("Question 1 · Why did it stop?", "on", `
       <div class="cause"><b>${esc(dg.cause)}</b><span>${esc((dg.name || "").replace(/_/g, " "))}</span>
       <span class="chip ${dg.confidence >= 0.7 ? "blue" : "amber"}">confidence ${Number(dg.confidence).toFixed(2)}</span>
+      ${novel ? `<span class="chip novel">outside the playbook</span>` : ""}
+      ${(dg.method || "").includes("analyst") ? `<span class="chip violet">analyst model</span>` : ""}
       ${dg.contested ? `<span class="chip amber">contested</span>` : ""}</div>
       <p class="explain">${esc(dg.explanation)}</p>${ev}
       ${hyps ? `<div class="eyebrow" style="margin-top:10px">Every cause the evidence supports</div>${hyps}` : ""}${obs}`));
@@ -303,11 +388,21 @@ function renderHandshake(v) {
     out.push(step("Question 2 · Should we act? The 11 rules", vd.permitted ? "good" : "bad",
       `<p style="margin:0 0 8px">${vd.permitted
         ? `<b>Permitted.</b> Every rule that applies passed.`
-        : `<b>Refused by ${esc(vd.binding_rule)}.</b> ${esc(vd.reason)}.`}</p><div class="rules">${rows}</div>`));
+        : `<b>Not on its own: ${esc(vd.binding_rule)}.</b> ${esc(vd.reason)}.`}</p><div class="rules">${rows}</div>`));
+  }
+  const prop = vd.proposal;
+  if (jn.status === "exception" && prop) {
+    out.push(step("Drafted recovery · waiting for you", "on", `<div class="proposal">
+      <div class="why"><b>${esc((prop.action || "").replace(/_/g, " "))}</b>${prop.sku ? ` · ${esc(prop.sku)}` : ""} · drafted by ${prop.source === "analyst" ? "the analyst model" : "Handshake's rules"} from your catalogue</div>
+      <textarea id="propmsg" aria-label="Message the agent will receive">${esc(prop.message || "")}</textarea>
+      ${prop.merchant_change ? `<div class="why">For the shop: ${esc(prop.merchant_change)}</div>` : ""}
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px"><button class="btn sm" onclick="approve()">Approve and send to the agent</button>
+      <span class="muted" id="propnote">You're the merchant here. The approval is written to the ledger.</span></div></div>`));
   }
   if (dir.intervention) {
     const a = dir.merchant_action || {}, ro = dir.reoffer || {};
     out.push(step("Action", "good", `<b>${esc(dir.intervention)} · ${esc(dir.name.replace(/_/g, " "))}</b>
+      ${dir.approved_by ? `<span class="chip violet">approved by ${esc(dir.approved_by)}</span>` : ""}
       <div class="ev"><span class="k">to the shop, signed webhook</span><br>${esc(a.type)} <code>${esc(JSON.stringify(Object.fromEntries(Object.entries(a).filter(([k]) => !["type", "approval_token"].includes(k)))))}</code></div>
       ${ro.message ? `<div class="ev"><span class="k">to the agent, when it asks</span><br>${esc(ro.message)}</div>` : ""}
       ${dir.concession ? `<div class="muted">Margin given up: ${inr(dir.concession)}</div>` : ""}`));
@@ -316,26 +411,28 @@ function renderHandshake(v) {
     const body = jn.status === "recovered"
       ? `<div class="money g">${inr(jn.recovered_value)}</div>recovered. The same agent came back and paid.`
       : jn.status === "recovering" ? `Re-offer waiting for the agent…`
-      : jn.status === "exception" ? `<div class="money r">${inr(jn.basket_value)}</div>not recovered. Sent to a person in the exceptions queue, with the evidence attached. Nothing was spent.`
+      : jn.status === "exception" ? `<div class="money r">${inr(jn.basket_value)}</div>at risk. In the exceptions queue with the evidence attached. Nothing has been spent.`
       : `<div class="money r">${inr(jn.basket_value)}</div>lost.`;
-    out.push(step("Outcome", jn.status === "recovered" ? "good" : jn.status === "recovering" ? "on" : "bad", body));
+    out.push(step("Outcome", jn.status === "recovered" ? "good" : jn.status === "recovering" || jn.status === "exception" ? "on" : "bad", body));
   }
-  if (v.status === "done" && dg.cause !== undefined || jn.status === "converted") {
-    const expect = meta.expect, got = dg.cause || null;
-    const ok = expect === got;
-    out.push(`<div class="reveal ${ok ? "ok" : "no"} fade"><b>The hidden truth:</b> ${esc(meta.story)}<br>
-      ${expect ? `The shop's fault was <b>${esc(expect)}</b>; Handshake said <b>${esc(got || "nothing")}</b> ${ok ? "✓" : "✗"}` : `No fault was injected. Handshake raised nothing ${ok ? "✓" : "✗"}`}
-      ${v.scenario === "false_claim" ? `<br>The agent's claim matches a real cause name, but nothing in the traffic supports it, so confidence stays at ${Number(dg.confidence).toFixed(2)} and R-10 refuses. Saying the right words doesn't get an agent a discount.` : ""}</div>`);
+  if (v.judgement) {
+    const jd = v.judgement, cls = {correct: "ok", "n/a": "ok", honest_unknown: "unk", wrong: "no"}[jd.verdict];
+    const truths = (v.truth || []).map(truthText);
+    out.push(`<div class="reveal ${cls} fade"><b>The truth:</b> ${esc(v.scenario_meta.story)}<br>
+      ${truths.length ? `The agent stopped because ${esc(truths.join(", then because "))}.` : "The agent never stopped."}
+      <br><b>${{correct: "✓ Correct.", "n/a": "✓", honest_unknown: "≈ Honest unknown.", wrong: "✗ Wrong."}[jd.verdict]}</b> ${esc(jd.sentence)}</div>`);
   }
   const el = $("#hs");
   const html = out.join("");
-  if (el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; }
+  const editing = document.activeElement && document.activeElement.id === "propmsg";
+  if (el.dataset.h !== html && !editing) { el.dataset.h = html; el.innerHTML = html; }
   const link = $("#openj");
   link.href = `/merchant#journey=${encodeURIComponent(jn.journey_id)}`;
   link.hidden = false;
 }
 
 loadScenarios().catch(e => { $("#grid").innerHTML = `<div class="empty">Could not load scenarios: ${esc(e.message)}</div>`; });
+score();
 </script>
 </body>
 </html>

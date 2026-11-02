@@ -106,3 +106,97 @@ SCENARIOS = {
 def mandate_for(name):
     sc = SCENARIOS[name]
     return {**BASE_MANDATE, **(sc.get("mandate") or {})}
+
+
+# ---------------------------------------------------------------- mystery ---
+#
+# Nobody chooses what goes wrong. A random brief meets a shop with zero to two
+# random hidden conditions, four of which no playbook entry covers. What the
+# agent actually does — buy, or stop for whichever problem it hits first, or
+# stop because nothing fits its brief — emerges from the two. The agent's own
+# record of why it stopped is the ground truth Handshake is scored against.
+
+CONDITIONS = ["missing_attribute", "variant_collision", "price_drift", "otp_wall",
+              "flaky_error", "prose_policy", "unserviceable", "insufficient_funds",
+              "silent_decline"]
+OFF_PLAYBOOK = ["slow_delivery", "unsupported_payment", "out_of_stock", "shipping_fee"]
+
+CONDITION_TEXT = {
+    "missing_attribute": "the feed dropped the 1.7 L kettle's wattage",
+    "variant_collision": "the 1.7 L kettle was listed twice, identically",
+    "price_drift": "the checkout re-quoted 9% higher",
+    "otp_wall": "payment demanded an OTP",
+    "flaky_error": "payment returned one 503",
+    "prose_policy": "the 1.7 L kettle's returns policy was prose",
+    "unserviceable": "the delivery table lost the agent's pincode",
+    "insufficient_funds": "the rail declined for funds",
+    "silent_decline": "the rail declined with no reason code",
+    "slow_delivery": "a warehouse transfer made the 1.7 L kettle ship in 9 days (not in the feed)",
+    "unsupported_payment": "the shop refuses UPI Reserve mandates at payment",
+    "out_of_stock": "the 1.7 L kettle sold out between listing and checkout",
+    "shipping_fee": "a ₹149 shipping fee appeared only at re-quote",
+}
+
+
+def mystery(rng):
+    """(mandate, conditions) — a random brief and a random set of shop problems."""
+    m = dict(BASE_MANDATE)
+    m["cap"] = rng.choice([1900.0, 2400.0, 3000.0, 3000.0, 5000.0])
+    m["budget"] = max(m["cap"], 3000.0)
+    m["drift_tolerance"] = rng.choice([0.02, 0.03, 0.05, 0.08])
+    m["max_ship_days"] = rng.choice([None, None, 3, 5])
+    m["min_warranty_months"] = rng.choice([None, None, None, 12, 24])
+    m["min_returns_days"] = rng.choice([7, 7, 7, 10])
+    rules = [f"cap ₹{m['cap']:,.0f}", f"price may move {m['drift_tolerance']:.0%}"]
+    if m["max_ship_days"]:
+        rules.append(f"must ship within {m['max_ship_days']} days")
+    if m["min_warranty_months"]:
+        rules.append(f"warranty ≥ {m['min_warranty_months']} months")
+    rules.append(f"returns ≥ {m['min_returns_days']} days")
+    m["goal"] = ("Buy an electric kettle, at least 1.5 litres and 1,200 W. "
+                 "Rules from my owner: " + ", ".join(rules) + ".")
+    count = rng.choice([0, 1, 1, 1, 2])
+    pool = CONDITIONS + OFF_PLAYBOOK * 2           # off-playbook problems are common
+    conditions = []
+    while len(conditions) < count:
+        c = rng.choice(pool)
+        if c not in conditions:
+            conditions.append(c)
+    return m, conditions
+
+
+def judge(truth, diagnosis, status):
+    """Score Handshake's answer against the agent's real reason.
+    Returns (verdict, sentence): correct | honest_unknown | wrong | n/a."""
+    if truth is None:
+        return ("n/a", "The agent bought first time; there was nothing to explain.")
+    dg = diagnosis or {}
+    cause, detail = dg.get("cause"), dg.get("detail") or {}
+    if truth == "false_claim":
+        ok = (dg.get("declared") or {}).get("corroborated") is False and status == "exception"
+        return ("correct" if ok else "wrong",
+                "The agent lied about its reason; Handshake refused to reward it."
+                if ok else "The agent lied about its reason and Handshake acted on it.")
+    if truth == "decline:no_reason":
+        return ("correct" if cause == "UNKNOWN" else "wrong",
+                "The rail gave no reason, and Handshake declined to invent one.")
+    if truth.startswith(("slow:", "brief:")):
+        field = truth.split(":", 1)[1]
+        if cause == "N2" and detail.get("facet") == field:
+            return ("correct", f"Handshake found the {field.replace('_', ' ')} problem without "
+                               "a rule for it.")
+    elif truth.startswith("refused:"):
+        if cause == "N1" and detail.get("error") == truth.split(":", 1)[1]:
+            return ("correct", "Handshake read the refusal no playbook entry covers.")
+    elif truth == cause:
+        return ("correct", "Handshake named the real reason.")
+    elif any(h["cause"] == truth and (h.get("detail") or {}).get("consequence_of") == cause
+             for h in dg.get("hypotheses") or []):
+        return ("correct", f"The agent's reason ({truth}) was a consequence of {cause}; "
+                           "Handshake named the root cause and listed both.")
+    if cause == "N3":
+        return ("honest_unknown", "The analyst offered a hypothesis; a person decides.")
+    if cause in (None, "UNKNOWN") or (dg.get("confidence") or 0) < 0.7:
+        return ("honest_unknown", "Handshake didn't have enough evidence and said so, "
+                                  "instead of guessing.")
+    return ("wrong", f"Handshake said {cause}; the real reason was {truth}.")

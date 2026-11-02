@@ -42,11 +42,25 @@ rupees when the agent comes back and pays.
 seeded sessions against a simulated merchant, randomised control, macro-F1
 against injected faults. It is where the numbers below come from.
 
+**It is not a menu of cases.** The 13 known causes are recognised exactly. On
+top of them, general detectors ask questions any abandonment can answer,
+without a rule written in advance:
+- Did the shop refuse the agent's last request?
+- Was what the agent saw the weakest of its options on some dimension?
+
+An optional analyst model then reads traces nothing else explains. Causes
+outside the playbook get a drafted re-offer that a person approves. On `/demo`,
+a **mystery shopper** (random brief, random hidden shop problems, nobody
+choosing) scores Handshake blind against the agent's own private record of why
+it stopped.
+
 **How does Handshake know *why* an agent stopped?** Not from the 11 rules.
 Those decide whether acting is *allowed*. The *why* comes from a separate
 evidence engine that tests 13 causes against what the shop actually served.
 [docs/DIAGNOSIS.md](docs/DIAGNOSIS.md) explains it in a page.
 [docs/INTEGRATION.md](docs/INTEGRATION.md) is the guide for wiring a real store in.
+[docs/STUDY_PROMPT.md](docs/STUDY_PROMPT.md) is a prompt that turns Claude into a
+tutor for this project, from first principles to production.
 
 ---
 

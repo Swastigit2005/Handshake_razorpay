@@ -210,18 +210,22 @@ def list_journeys(merchant_id, status=None, limit=50, offset=0):
 
 
 def idle_journeys(now, default_idle):
-    """(merchant_id, journey_id) for every open journey past its merchant's idle
-    window. Eligibility only; `transition` decides who actually closes it."""
+    """(merchant_id, journey_id, status) for every journey that went quiet past
+    its merchant's idle window: open journeys, and recovering ones where the agent
+    took the re-offer, shopped again, and then went silent — a second stop that
+    needs its own diagnosis. Eligibility only; `transition` decides who closes it."""
     with connect() as conn:
         rows = conn.execute(
-            "SELECT j.merchant_id, j.journey_id, j.last_event_at, m.settings"
+            "SELECT j.merchant_id, j.journey_id, j.status, j.last_event_at, m.settings"
             " FROM journeys j JOIN merchants m ON m.merchant_id = j.merchant_id"
-            " WHERE j.status = 'open' AND j.last_event_at < ?", (now - 1,)).fetchall()
+            " WHERE j.last_event_at < ? AND (j.status = 'open' OR"
+            " (j.status = 'recovering' AND j.last_event_at > j.closed_at))",
+            (now - 1,)).fetchall()
     out = []
     for r in rows:
         idle = load(r["settings"]).get("idle_seconds", default_idle)
         if now - r["last_event_at"] >= idle:
-            out.append((r["merchant_id"], r["journey_id"]))
+            out.append((r["merchant_id"], r["journey_id"], r["status"]))
     return out
 
 

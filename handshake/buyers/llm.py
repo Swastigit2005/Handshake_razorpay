@@ -97,6 +97,12 @@ def _is_auth_error(message):
             or "invalid_api_key" in low)
 
 
+def _timeout():
+    """Seconds per model call. The clients' own default is ten minutes, which
+    would stall a diagnosis or a batch on one hung request."""
+    return float(os.environ.get("HS_LLM_TIMEOUT", "45"))
+
+
 # --------------------------------------------------------------- endpoint ---
 
 class Endpoint:
@@ -133,10 +139,10 @@ class Endpoint:
         try:
             if self.provider == "anthropic":
                 import anthropic
-                self.client = anthropic.Anthropic(api_key=self.key)
+                self.client = anthropic.Anthropic(api_key=self.key, timeout=_timeout())
             else:
                 import openai
-                kwargs = {"api_key": self.key}
+                kwargs = {"api_key": self.key, "timeout": _timeout()}
                 if self.base_url:
                     kwargs["base_url"] = self.base_url
                 self.client = openai.OpenAI(**kwargs)

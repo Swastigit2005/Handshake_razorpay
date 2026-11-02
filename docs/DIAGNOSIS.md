@@ -87,9 +87,70 @@ wrong fix and teaches the merchant the wrong lesson.
 | A8 | fulfilment mismatch | create returned 422 `fulfilment_undetermined` / unserviceable |
 | B1–B5 | payment failures | 402 with an explicit reason code, mapped from common gateway vocabularies |
 
+## Beyond the 13: causes nobody wrote a rule for
+
+The 13 signatures cover the failures we know. Real agents will stop for reasons
+outside all of them, so diagnosis does not stop at the list. Three more
+mechanisms are open-ended by design:
+
+| | Mechanism | Question it asks | Needs a rule written in advance? |
+|---|---|---|---|
+| N1 | refusal | Did the shop refuse the agent's last real request (any 4xx not already explained), and did the agent stop there? | no |
+| N2 | weakest option | Of the options the agent was shown, was the one it walked away from strictly the worst on some dimension it can compare, such as delivery time, warranty, returns window or capacity? | no |
+| N3 | analyst model | Nothing above explains it confidently, so what does a careful reader of this trace conclude? | no |
+
+A trailing polite `cancel` is skipped when looking for the refusal: it is the
+agent leaving, not the reason it left.
+
+The analyst (`handshake/live/analyst.py`) runs only when no detector reaches
+0.70, so known causes stay fully deterministic. It sees the same trace and
+catalogue as the detectors. Its reply is validated in code:
+- citations of events that don't exist are dropped
+- with no valid citation, the reply is discarded
+- an invented SKU is refused
+
+It can map to a known cause or name a new one.
+
+**Every open-ended cause is capped at 0.66, below R-10's threshold.** A
+general detector or a model can explain and draft; it cannot move money. These
+journeys go to *Needs approval* with a **drafted re-offer**, built from the
+merchant's own catalogue: an alternative that is better on the dimension that
+mattered, a payment method the shop does accept, or a retry once the shop has
+fixed the error. A person edits or approves it in one click. The kill switch
+(R-11), a permanent decline (R-03) and the re-offer cap (R-01) still apply, and
+the approval is written to the ledger with the approver's name.
+
+The *Emerging patterns* tab groups these journeys by signature and value at
+risk. The biggest groups are the next detectors worth writing: once a pattern
+is understood, it becomes deterministic and stops needing approval each time.
+
+Two more rules of reasoning:
+- **Root cause over consequence.** If the first quote fitted the spending cap
+  and only the re-quote broke it, the cap breach is reported as a consequence
+  of the price move, and a price lock fixes both.
+- **Each attempt on its own evidence.** If the agent takes a re-offer, tries
+  again and stops again, only the events since the re-offer are diagnosed.
+
+## Proving it blind: the mystery shopper
+
+Choosing a scenario and watching Handshake find it proves little: whoever chose
+already knew the answer. `/demo` therefore defaults to a **mystery shopper**:
+- **A random brief:** spending cap, tolerated price movement, delivery
+  deadline, minimum warranty and returns window.
+- **A shop with zero to two random hidden problems:** 13 kinds, four of them
+  outside the playbook. These are a delivery delay missing from the feed, a
+  payment method refused at checkout, stock that disappears at checkout, and a
+  shipping fee that appears only at re-quote.
+
+Nobody chooses. The agent keeps a private record of why it really stopped, and
+that record is the ground truth. The run's API response is sealed until
+Handshake has answered, so not even the browser can see the truth early. The
+page then scores each stop: correct, honest "not enough evidence", or wrong.
+
 ## Seeing it work
 
-Open `/demo`. Each scenario injects one fault into the demo store. The fault
+Open `/demo` and press **Send a mystery shopper**. The teaching scenarios (one
+known cause each) are under "study one cause at a time". In both, a fault The fault
 reaches the store in a header the SDK never forwards, so Handshake has to work
 it out from the traffic alone. After each run the page shows the hidden fault
 next to Handshake's answer. `handshake/tests/test_live.py` asserts both the

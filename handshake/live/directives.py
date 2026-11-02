@@ -158,8 +158,91 @@ def _i10(dg, j, ctx):
     return ({"type": "escalate", "reason": dg.get("explanation", "")}, None, 0.0)
 
 
+def _i11(dg, j, ctx):
+    # Never built automatically. An outside-the-playbook cause reaches the agent
+    # only through approve(), after a person has read the draft.
+    return None
+
+
 BUILDERS = {"I-01": _i01, "I-02": _i02, "I-03": _i03, "I-04": _i04, "I-05": _i05,
-            "I-06": _i06, "I-07": _i07, "I-08": _i08, "I-09": _i09, "I-10": _i10}
+            "I-06": _i06, "I-07": _i07, "I-08": _i08, "I-09": _i09, "I-10": _i10,
+            "I-11": _i11}
+
+
+# --------------------------------------------------------------- proposals ---
+#
+# For a journey the gate would not act on by itself — an open-ended cause, or a
+# hypothesis below the confidence bar — Handshake still drafts the recovery it
+# would try, so the person reviewing it approves or edits instead of starting
+# from a blank page. Drafts are built from the merchant's own catalogue; the
+# analyst's suggestion is used only after it has been validated against it.
+
+def _alternative(ctx, sku, better=None):
+    me = ctx["product"](sku) or {}
+    pool = [p for p in ctx["catalog"]()
+            if p.get("category") == me.get("category") and p.get("sku") != sku
+            and p.get("stock", 1) > 0]
+    if better:
+        pool = [p for p in pool if better(p)]
+    if not pool:
+        return None
+    price = me.get("price", 0)
+    return min(pool, key=lambda p: abs(p.get("price", 0) - price))
+
+
+def propose(dg, journey, ctx):
+    d = dg.get("detail") or {}
+    if d.get("self_report_only") or dg.get("cause") in (None, "UNKNOWN"):
+        return None
+    if d.get("proposal"):                                   # the analyst's, validated
+        return dict(d["proposal"])
+    sku = d.get("sku") or journey.get("sku") or ""
+
+    if dg["cause"] == "N2":
+        from .detectors import LOWER_IS_BETTER, facets
+        facet, served = d["facet"], d["served"]
+
+        def better(p):
+            v = facets(p).get(facet)
+            return v is not None and (v < served if facet in LOWER_IS_BETTER else v > served)
+
+        alt = _alternative(ctx, sku, better)
+        if alt is None:
+            return {"action": "information", "source": "rules",
+                    "message": "", "merchant_change":
+                    f"No listing beats {sku} on {facet.replace('_', ' ')}. Improve it on "
+                    f"{sku} itself (currently {served})."}
+        val = facets(alt).get(facet)
+        nice = facet.replace("_", " ")
+        return {"action": "alternative_product", "sku": alt["sku"], "source": "rules",
+                "message": f"{alt.get('title', alt['sku'])} ({alt['sku']}) has {nice} {val}, "
+                           f"against {served} on {sku}.",
+                "merchant_change": f"{sku}'s {nice} ({served}) is the weakest in its "
+                                   "category; agents that check it walk away."}
+
+    if dg["cause"] == "N1":
+        text = f"{d.get('error', '')} {d.get('detail', '')}".lower()
+        if any(w in text for w in ("payment", "instrument", "method", "upi", "card")):
+            return {"action": "alternate_instrument", "methods": ["card_token", "upi_intent"],
+                    "source": "rules",
+                    "message": "That payment method isn't accepted here. Card and UPI intent "
+                               "both work; please retry with one of them.",
+                    "merchant_change": f"Agents arrive with methods your checkout rejects "
+                                       f"('{d.get('error')}'). Accept them, or list accepted "
+                                       "methods in the feed."}
+        if "stock" in text or "available" in text:
+            alt = _alternative(ctx, sku)
+            if alt:
+                return {"action": "alternative_product", "sku": alt["sku"], "source": "rules",
+                        "message": f"{sku} sold out at checkout. {alt.get('title', alt['sku'])} "
+                                   f"({alt['sku']}) is in stock at ₹{alt.get('price', 0):,.0f}.",
+                        "merchant_change": f"{sku} was listed as available but refused at "
+                                           "checkout. Sync stock to the feed."}
+        return {"action": "retry", "source": "rules",
+                "message": "That error has been fixed on our side. Please try again.",
+                "merchant_change": f"Investigate {d.get('status')} '{d.get('error')}' on "
+                                   f"{d.get('step', 'this step')} before approving."}
+    return None
 
 
 def build(intervention_id, diagnosis, journey, ctx):

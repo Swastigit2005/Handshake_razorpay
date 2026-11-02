@@ -26,7 +26,7 @@ from types import SimpleNamespace
 from ..config import PolicyConfig
 from ..policy.engine import PolicyEngine
 from ..taxonomy import CAUSES, RULES
-from . import directives, store, webhooks
+from . import analyst, directives, store, webhooks
 from .detectors import diagnose
 from .events import STAGE, STAGE_ORDER, InvalidEvent, normalise
 
@@ -246,8 +246,10 @@ def close(merchant, journey_id, reason, reclose=False):
 
     events = store.journey_events(mid, journey_id)
     schema = store.get_schema(mid)
+    catalogue = store.catalog(mid)
+    model = (lambda evs: analyst.review(evs, catalogue)) if analyst.available() else None
     dg = diagnose(events, schema, lambda sku: store.get_product(mid, sku) if sku else None,
-                  lambda: store.catalog(mid))
+                  lambda: catalogue, analyst=model)
     store.update_journey(mid, journey_id, diagnosis=dg)
     store.ledger_append(mid, journey_id, "diagnosis", "diagnosed",
                         trigger={"close_reason": reason, "events": len(events)},
@@ -305,9 +307,15 @@ def gate(merchant, journey_id, dg):
         # refusal — say so instead of blaming a rule.
         verdict["reason"] = (f"{', '.join(unbuildable)} permitted, but the directive could not "
                              "be built from the merchant's catalogue")
+        if unbuildable == ["I-11"]:
+            verdict["reason"] = ("outside the playbook: a person approves the drafted re-offer "
+                                 "before anything reaches the agent")
 
     if not v.permitted or v.intervention_id == "I-10":
         status = REFUSAL_TO_STATUS.get(v.binding_rule, "exception")
+        proposal = directives.propose(dg, j, ctx) if status == "exception" else None
+        if proposal:
+            verdict["proposal"] = proposal
         store.update_journey(mid, journey_id, status=status, verdict=verdict)
         store.ledger_append(mid, journey_id, "policy", "intervention_refused"
                             if not v.permitted else "escalated",
@@ -319,7 +327,8 @@ def gate(merchant, journey_id, dg):
                       else "journey.lost",
                       {"journey_id": journey_id, "binding_rule": v.binding_rule,
                        "rule": RULES.get(v.binding_rule, ""), "reason": verdict["reason"],
-                       "diagnosis": {"cause": dg["cause"], "explanation": dg["explanation"]}})
+                       "diagnosis": {"cause": dg["cause"], "explanation": dg["explanation"]},
+                       "proposal": verdict.get("proposal")})
         return store.get_journey(mid, journey_id)
 
     directive["journey_id"] = journey_id
@@ -352,16 +361,86 @@ def gate(merchant, journey_id, dg):
     return store.get_journey(mid, journey_id)
 
 
+# ---------------------------------------------------------------- approvals ---
+
+class ApprovalRefused(ValueError):
+    pass
+
+
+def approve(merchant, journey_id, approver, overrides=None):
+    """A person sends a drafted (or edited) re-offer for a journey the rules
+    would not act on alone. The deterministic limits still apply: the kill
+    switch, a permanent decline and the re-offer cap are checked here too."""
+    mid = merchant["merchant_id"]
+    j = store.get_journey(mid, journey_id)
+    if j is None:
+        raise ApprovalRefused("no such journey")
+    if j["status"] not in ("exception", "lost"):
+        raise ApprovalRefused(f"journey is {j['status']}; only exceptions can be approved")
+    cfg = policy_for(merchant)
+    if cfg.kill_switch:
+        raise ApprovalRefused("R-11: the kill switch is on")
+    hist = store.buyer_history(mid, j["agent_id"], journey_id)
+    if hist["declined"]:
+        raise ApprovalRefused("R-03: the agent's principal declined; that is permanent")
+    if j["attempts"] >= cfg.max_reoffers_per_session:
+        raise ApprovalRefused(f"R-01: {j['attempts']} re-offers already sent on this journey")
+
+    proposal = {**((j.get("verdict") or {}).get("proposal") or {}),
+                **{k: v for k, v in (overrides or {}).items() if v not in (None, "")}}
+    if not proposal.get("message"):
+        raise ApprovalRefused("write the message the agent will receive")
+    if proposal.get("action") == "alternative_product" and \
+            not store.get_product(mid, proposal.get("sku") or ""):
+        raise ApprovalRefused(f"{proposal.get('sku')!r} is not in the synced catalogue")
+
+    # The fresh offer goes in first: the sweeper expires `recovering` journeys
+    # whose offer has lapsed, and must never see this one with the old offer.
+    offer = store.put_reoffer(mid, journey_id,
+                              {**proposal, "type": "merchant_offer", "journey_id": journey_id,
+                               "intervention": "I-11"},
+                              settings_for(merchant)["reoffer_ttl_seconds"])
+    won = store.transition(mid, journey_id, ("exception", "lost"), "recovering")
+    if won is None:
+        raise ApprovalRefused("someone else acted on this journey first")
+    store.record_intervention(mid, j["agent_id"], journey_id, "I-11")
+    directive = {"directive_id": f"dir_{uuid.uuid4().hex[:14]}", "intervention": "I-11",
+                 "name": "approved_proposal", "approved_by": approver, "concession": 0.0,
+                 "merchant_action": {"type": "approved_offer", **{
+                     k: proposal.get(k) for k in ("action", "sku", "merchant_change")}},
+                 "reoffer": offer, "reversal": {}, "journey_id": journey_id,
+                 "checkout_id": j["checkout_id"], "agent_id": j["agent_id"]}
+    store.update_journey(mid, journey_id, directive=directive, attempts=j["attempts"] + 1)
+    entry = store.ledger_append(mid, journey_id, "operator", "proposal_approved",
+                                trigger={"approved_by": approver},
+                                outcome={"intervention": "I-11", "offer_id": offer["offer_id"],
+                                         "action": proposal.get("action"),
+                                         "edited": bool(overrides)})
+    webhooks.emit(merchant, journey_id, "recovery.directive",
+                  dict(directive, ledger_entry=entry["entry_id"]))
+    return store.get_journey(mid, journey_id)
+
+
+def dismiss(merchant, journey_id, approver, note=""):
+    mid = merchant["merchant_id"]
+    j = store.transition(mid, journey_id, ("exception",), "lost")
+    if j is None:
+        raise ApprovalRefused("only an open exception can be dismissed")
+    store.ledger_append(mid, journey_id, "operator", "proposal_dismissed",
+                        trigger={"by": approver}, outcome={"note": note[:300]})
+    return j
+
+
 # ------------------------------------------------------------------ sweeper ---
 
 def sweep(now=None):
     """Close idle journeys and expire stale re-offers. Returns what it did."""
     now = now or time.time()
     closed = expired = 0
-    for mid, jid in store.idle_journeys(now, DEFAULT_SETTINGS["idle_seconds"]):
+    for mid, jid, status in store.idle_journeys(now, DEFAULT_SETTINGS["idle_seconds"]):
         merchant = store.get_merchant(mid)
         if merchant:
-            close(merchant, jid, "idle_timeout")
+            close(merchant, jid, "idle_timeout", reclose=status == "recovering")
             closed += 1
     for mid, jid in store.expire_recoveries(now):
         store.ledger_append(mid, jid, "pipeline", "reoffer_expired",

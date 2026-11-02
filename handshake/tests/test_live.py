@@ -140,10 +140,31 @@ def test_self_report_that_agrees_raises_confidence():
 
 
 def test_close_competitors_lower_confidence():
-    # Over the cap *and* drifted: two strong explanations, reported as contested.
-    d = run(checkout(cap=2400, second=2571.11))
+    # Over the cap from the first quote *and* drifted: two independent strong
+    # explanations, reported as contested.
+    d = run(checkout(cap=2300, second=2571.11))
     assert d["contested"] and d["confidence"] < 0.8
     assert {h["cause"] for h in d["hypotheses"]} == {"A3", "A4"}
+
+
+def test_a_cap_breach_caused_by_a_price_move_names_the_price_move():
+    # The first quote fitted the cap; only the re-quote broke it. Root cause: A3.
+    d = run(checkout(cap=2400, second=2571.11))
+    assert d["cause"] == "A3" and not d["contested"] and d["confidence"] >= 0.9
+    a4 = next(h for h in d["hypotheses"] if h["cause"] == "A4")
+    assert a4["detail"]["consequence_of"] == "A3"
+
+
+def test_a_second_attempt_is_diagnosed_on_its_own_events():
+    # Attempt 1: missing attribute. Re-offer collected. Attempt 2: price drift.
+    first = [ev(1, "feed.read"), view(2, attrs={"capacity_l": 1.7, "warranty_months": 24}),
+             ev(3, "reoffer.fetch", 200, response={"offer": {"type": "catalogue_delta"}})]
+    second = [ev(4, "checkout.create", request={"sku": "KET-170", "declared_cap": 3000},
+                 response={"session_id": "cs_2", "total": 2358.82}),
+              ev(5, "checkout.update", response={"total": 2571.11})]
+    d = run(first + second)
+    assert d["cause"] == "A3"
+    assert any("second attempt" in o for o in d["observations"])
 
 
 def test_reoffer_polls_are_not_the_last_thing_the_agent_did():
@@ -578,3 +599,155 @@ def test_event_retention_keeps_open_journeys(live):
     assert store.purge_events(time.time() + 10) == 0          # still open: kept
     store.update_journey(mid, "jr_old", status="lost")
     assert store.purge_events(time.time() + 10) == 2
+
+
+# ------------------------------------------------- outside the playbook ---
+
+def test_an_unrecognised_refusal_is_explained_without_a_rule_for_it():
+    events = checkout() + [ev(5, "checkout.complete", 400,
+                              response={"error": "payment_method_unsupported",
+                                        "detail": "this store does not accept UPI Reserve"}),
+                           ev(6, "checkout.cancel")]
+    d = run(events)
+    assert d["cause"] == "N1" and d["confidence"] < 0.70          # never acts alone
+    assert d["detail"]["error"] == "payment_method_unsupported"
+    assert d["evidence"][0]["event"] == 5                          # the refusal, not the cancel
+
+
+def test_the_weakest_option_on_a_dimension_is_found_without_a_rule_for_it():
+    peers = {**TRUTH, "KET-150": {"sku": "KET-150", "category": "home_kitchen", "price": 1590.0,
+                                  "attributes": {"capacity_l": 1.5, "power_watts": 1500},
+                                  "policy": {"returns_days": 10, "warranty_months": 12},
+                                  "fulfilment": {"ships_in_days": 2}}}
+    feed = ev(1, "feed.read", response={"items": [view()["response"], peers["KET-150"]]})
+    created = ev(3, "checkout.create", request={"sku": "KET-170", "declared_cap": 3000},
+                 response={"session_id": "cs_1", "total": 2358.82,
+                           "fulfilment": {"ships_in_days": 9}})
+    d = diagnose([feed, view(), created, ev(4, "checkout.update", response={"total": 2358.82}),
+                  ev(5, "checkout.cancel")], SCHEMA, peers.get, lambda: list(peers.values()))
+    assert d["cause"] == "N2" and d["detail"]["facet"] == "ships_in_days"
+    assert d["detail"]["best_alternative"] == "KET-150" and d["confidence"] < 0.70
+
+
+def test_analyst_output_is_validated_not_trusted():
+    from handshake.live.analyst import parse
+    events = [{**view(), "seq": 1}, {**ev(2, "checkout.cancel"), "seq": 2}]
+    catalogue = list(TRUTH.values())
+    good = parse('{"cause": "NOVEL", "label": "Colour Wrong!", "explanation": "It wanted red.",'
+                 ' "evidence": [1, 99], "confidence": 0.9, "proposal": {"action":'
+                 ' "alternative_product", "sku": "NOPE-1", "message": "Try this."}}',
+                 events, catalogue)
+    assert good.cause == "N3" and good.score <= 0.66              # capped below R-10
+    assert [e["event"] for e in good.evidence] == [1]              # invented event dropped
+    assert good.detail["label"] == "colour_wrong_"
+    assert good.detail["proposal"]["action"] == "information"      # invented SKU refused
+    assert parse('{"cause": "A1", "explanation": "x", "evidence": [42]}', events, catalogue) is None
+    assert parse("not json", events, catalogue) is None
+
+
+def test_the_analyst_is_consulted_only_when_detectors_are_unsure():
+    calls = []
+
+    def fake(evs):
+        calls.append(len(evs))
+        return None
+    diagnose([view(attrs={"capacity_l": 1.7, "warranty_months": 24})], SCHEMA, TRUTH.get,
+             analyst=fake)
+    assert calls == []                              # A1 at 0.92: deterministic, no model
+    diagnose([ev(1, "feed.read"), view()], SCHEMA, TRUTH.get, analyst=fake)
+    assert calls == [2]                             # nothing explains it: ask
+
+
+def _novel_journey(live, h):
+    tc = live["tc"]
+    tc.put("/v1/schema", json={"schema": SCHEMA}, headers=h)
+    alt = {"sku": "KET-150", "category": "home_kitchen", "price": 1590.0, "tax_rate": 0.18,
+           "stock": 10, "attributes": {"capacity_l": 1.5, "power_watts": 1500},
+           "policy": {"returns_days": 10}, "fulfilment": {"ships_in_days": 2}}
+    tc.put("/v1/catalog", json={"products": [{**TRUTH["KET-170"], "stock": 5}, alt]}, headers=h)
+    base = {"agent_id": "ag_n", "journey_id": "jr_n"}
+    tc.post("/v1/events", headers=h, json={"events": [
+        {**base, "type": "product.view", "sku": "KET-170", "response": TRUTH["KET-170"]},
+        {**base, "type": "checkout.create", "sku": "KET-170", "http_status": 409,
+         "request": {"sku": "KET-170"},
+         "response": {"error": "insufficient_stock", "detail": "KET-170 is not available"}}]})
+    m = live["store"].merchant_by_key(h["Authorization"][7:])
+    return m, live["pipeline"].close(m, "jr_n", "idle_timeout")
+
+
+def test_novel_cause_drafts_a_fix_and_waits_for_a_person(live):
+    _, h = merchant(live)
+    m, j = _novel_journey(live, h)
+    assert j["status"] == "exception" and j["diagnosis"]["cause"] == "N1"
+    prop = j["verdict"]["proposal"]
+    assert prop["action"] == "alternative_product" and prop["sku"] == "KET-150"
+    assert live["tc"].get("/v1/reoffers/jr_n", headers=h).status_code == 404   # nothing sent yet
+
+    r = live["tc"].post("/v1/journeys/jr_n/approve", headers=h,
+                        json={"approved_by": "Asha", "message": "KET-150 is in stock now."})
+    assert r.status_code == 200 and r.json()["status"] == "recovering"
+    offer = live["tc"].get("/v1/reoffers/jr_n", headers=h).json()["offer"]
+    assert offer["type"] == "merchant_offer" and offer["message"] == "KET-150 is in stock now."
+    entry = live["store"].ledger(m["merchant_id"], "jr_n")[-1]
+    assert entry["action"] == "proposal_approved" and entry["trigger"]["approved_by"] == "Asha"
+    # A second approval of the same journey is refused: it is no longer an exception.
+    assert live["tc"].post("/v1/journeys/jr_n/approve", headers=h, json={}).status_code == 409
+    patterns = live["tc"].get("/v1/patterns", headers=h).json()["patterns"]
+    assert patterns[0]["cause"] == "N1" and patterns[0]["approved"] == 1
+
+
+def test_approval_still_obeys_the_kill_switch(live):
+    _, h = merchant(live)
+    _novel_journey(live, h)
+    live["tc"].patch("/v1/policy", json={"kill_switch": True}, headers=h)
+    r = live["tc"].post("/v1/journeys/jr_n/approve", headers=h, json={"message": "x"})
+    assert r.status_code == 409 and "R-11" in r.json()["error"]["message"]
+
+
+def test_judge_scores_against_the_agents_own_reason():
+    from handshake.demo_shop.scenarios import judge
+    dg = {"cause": "N2", "confidence": 0.62, "detail": {"facet": "ships_in_days"}}
+    assert judge("slow:ships_in_days", dg, "exception")[0] == "correct"
+    assert judge("A1", dg, "exception")[0] == "honest_unknown"      # below the bar: not a claim
+    assert judge("A1", {"cause": "A3", "confidence": 0.9}, "recovering")[0] == "wrong"
+    assert judge("decline:no_reason", {"cause": "UNKNOWN", "confidence": 0}, "exception")[0] == "correct"
+    assert judge(None, None, None)[0] == "n/a"
+
+
+def test_mystery_runs_are_reproducible_from_their_seed():
+    import random
+    from handshake.demo_shop.scenarios import mystery
+    assert mystery(random.Random(7)) == mystery(random.Random(7))
+    seen = {c for s in range(200) for c in mystery(random.Random(s))[1]}
+    assert {"slow_delivery", "unsupported_payment", "out_of_stock", "shipping_fee"} <= seen
+
+
+def test_mystery_shoppers_end_to_end_with_approval(demo, monkeypatch):
+    """Blind runs over real HTTP: sealed until judged; approved fixes recover."""
+    monkeypatch.setattr(demo, "MYSTERY_WAIT", 12.0)
+    seeds = [103, 116, 108, 112]      # refused payment method, stock-out, drift, funds
+    runs = [demo.start("mystery", pace=0, seed=s) for s in seeds]
+    first = demo.view(runs[0]["run_id"])
+    assert first["sealed"] and first["thoughts"] == [] and first["truth"] == []
+    assert "Sealed" in first["scenario_meta"]["story"]
+    approved = set()
+    deadline = time.time() + 90
+    pending = {r["run_id"] for r in runs}
+    results = {}
+    while pending and time.time() < deadline:
+        for rid in list(pending):
+            v = demo.view(rid)
+            j = v["journey"] or {}
+            if j.get("status") == "exception" and (j.get("verdict") or {}).get("proposal") \
+                    and rid not in approved:
+                demo.approve(rid)
+                approved.add(rid)
+            if v["status"] == "done" and v["judgement"]:
+                results[rid] = v
+                pending.discard(rid)
+        time.sleep(0.3)
+    assert not pending, f"runs did not finish: {pending}"
+    for rid, v in results.items():
+        assert v["judgement"]["verdict"] in ("correct", "n/a"), (v["truth"], v["journey"]["diagnosis"])
+        assert v["outcome"]["bought"], v["truth"]
+    assert len(approved) == 2                     # the two outside the playbook needed a person

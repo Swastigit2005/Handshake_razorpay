@@ -129,8 +129,9 @@ $("#sandbox").onclick = async () => {
 };
 $("#logout").onclick = () => { store.set("hs_key", null); location.hash = ""; location.reload(); };
 
-const TABS = [["overview", "Overview"], ["journeys", "Journeys"], ["exceptions", "Exceptions"],
-  ["policy", "Rules & policy"], ["connect", "Connect your store"], ["webhooks", "Webhooks"]];
+const TABS = [["overview", "Overview"], ["journeys", "Journeys"], ["exceptions", "Needs approval"],
+  ["patterns", "Emerging patterns"], ["policy", "Rules & policy"], ["connect", "Connect your store"],
+  ["webhooks", "Webhooks"]];
 
 function shell() {
   $("#logout").hidden = false;
@@ -151,7 +152,7 @@ function shell() {
   loadPolicy();
   render();
   clearInterval(timer);
-  timer = setInterval(() => { if (["overview", "journeys", "exceptions", "webhooks"].includes(TAB)) render(true); }, 3000);
+  timer = setInterval(() => { if (["overview", "journeys", "exceptions", "webhooks", "patterns"].includes(TAB)) render(true); }, 3000);
   const m = location.hash.match(/journey=([^&]+)/);
   if (m) openJourney(decodeURIComponent(m[1]));
 }
@@ -172,6 +173,7 @@ async function render(quiet) {
     if (TAB === "policy") return quiet || policy(v);
     if (TAB === "connect") return quiet || connect(v);
     if (TAB === "webhooks") return hooks(v);
+    if (TAB === "patterns") return patterns(v);
   } catch (e) {
     if (e.status === 401) { store.set("hs_key", null); location.reload(); }
     v.innerHTML = `<div class="empty">Could not load: ${esc(e.message)}</div>`;
@@ -217,7 +219,7 @@ async function overview(v) {
 const STATUS = ["", "open", "recovering", "recovered", "exception", "lost", "converted"];
 async function journeys(v, status, fixed) {
   const {journeys: js} = await api(`/journeys?limit=200${status ? "&status=" + status : ""}`);
-  const bar = fixed ? `<p class="small" style="margin:0 0 10px">Journeys the rules would not act on. Each carries the diagnosis and the rule that stopped it, for a person to decide.</p>`
+  const bar = fixed ? `<p class="small" style="margin:0 0 10px">Journeys the rules would not act on alone: causes outside the playbook, or diagnoses below the confidence bar. Each carries the evidence and, where Handshake could build one from your catalogue, a drafted re-offer. Open one to approve, edit or dismiss it.</p>`
     : `<div class="toolbar">${STATUS.map(s => `<button class="btn ${s === FILTER ? "" : "sec"} sm" data-f="${s}">${s || "all"}</button>`).join("")}</div>`;
   set(v, bar + `<div class="card tw"><table><thead><tr><th>When</th><th>Status</th><th>Why it stopped</th><th>What happened</th><th class="num">Value</th><th>Agent</th></tr></thead><tbody>
     ${js.map(j => `<tr class="click" data-j="${esc(j.journey_id)}">
@@ -225,7 +227,7 @@ async function journeys(v, status, fixed) {
       <td><span class="chip st-${esc(j.status)}">${esc(j.status)}</span></td>
       <td>${j.cause ? `<b class="mono">${esc(j.cause)}</b> ${esc((j.cause_name || "").replace(/_/g, " "))}
         <div class="small" style="max-width:52ch">${esc((j.explanation || "").slice(0, 150))}${(j.explanation || "").length > 150 ? "…" : ""}</div>` : `<span class="muted">${j.status === "open" ? "still shopping" : "—"}</span>`}</td>
-      <td class="small">${j.intervention ? `<span class="chip green">${esc(j.intervention)}</span>` : ""}${j.binding_rule ? `<span class="chip amber">refused · ${esc(j.binding_rule)}</span>` : ""}</td>
+      <td class="small">${j.intervention ? `<span class="chip green">${esc(j.intervention)}</span>` : ""}${j.binding_rule && !j.intervention ? `<span class="chip amber">held · ${esc(j.binding_rule)}</span>` : ""}${j.has_proposal && j.status === "exception" ? ` <span class="chip violet">fix drafted</span>` : ""}</td>
       <td class="num">${j.status === "recovered" ? `<span style="color:var(--green)">${inr2(j.recovered_value)}</span>` : inr2(j.basket_value)}</td>
       <td class="mono small">${esc(j.agent_id)}</td></tr>`).join("") || `<tr><td colspan="6"><div class="empty">Nothing here yet.</div></td></tr>`}
   </tbody></table></div>`);
@@ -253,7 +255,14 @@ async function openJourney(id) {
       ${dg.declared ? `<div class="ev"><span class="k">agent's own words</span><br>"${esc(dg.declared.reason)}" · ${dg.declared.corroborated ? "the traffic agrees" : "the traffic does not support it"}</div>` : ""}</section>` : ""}
     ${rules ? `<section><div class="eyebrow">The 11 rules · ${vd.permitted ? "permitted " + esc(vd.intervention_id) : "refused by " + esc(vd.binding_rule)}</div>
       ${vd.permitted ? "" : `<p class="small" style="margin:0 0 6px">${esc(vd.reason)}</p>`}<div class="rules">${rules}</div></section>` : ""}
-    ${dir.intervention ? `<section><div class="eyebrow">Directive · ${esc(dir.intervention)} ${esc(dir.name)}</div>
+    ${j.status === "exception" && vd.proposal ? `<section><div class="eyebrow">Drafted recovery · needs your approval</div>
+      <div style="border:1px solid var(--violet);background:var(--violet-50);border-radius:12px;padding:12px 14px">
+      <div class="small"><b>${esc((vd.proposal.action || "").replace(/_/g, " "))}</b>${vd.proposal.sku ? " · " + esc(vd.proposal.sku) : ""} · drafted by ${vd.proposal.source === "analyst" ? "the analyst model" : "Handshake's rules"}</div>
+      <textarea id="pmsg" style="width:100%;min-height:70px;margin:8px 0">${esc(vd.proposal.message || "")}</textarea>
+      ${vd.proposal.merchant_change ? `<div class="small">For your side: ${esc(vd.proposal.merchant_change)}</div>` : ""}
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap"><button class="btn sm" id="papprove">Approve and send to the agent</button>
+      <button class="btn sec sm" id="pdismiss">Dismiss</button><span class="small" id="pnote"></span></div></div></section>` : ""}
+    ${dir.intervention ? `<section><div class="eyebrow">Directive · ${esc(dir.intervention)} ${esc(dir.name)}${dir.approved_by ? " · approved by " + esc(dir.approved_by) : ""}</div>
       <pre>${esc(JSON.stringify({merchant_action: dir.merchant_action, reoffer: dir.reoffer && {...dir.reoffer, approval_token: dir.reoffer.approval_token ? "•••" : undefined}, concession: dir.concession, reversal: dir.reversal}, null, 2))}</pre></section>` : ""}
     <section><div class="eyebrow">What your server saw · ${j.events.length} events</div><div class="tl">
       ${j.events.map(e => `<div><span class="muted">${e.seq}</span><span>${esc(e.type)}</span><span class="${e.type === "reoffer.fetch" ? "muted" : "s" + String(e.http_status)[0]}">${esc(e.summary)}</span></div>`).join("")}</div></section>
@@ -261,6 +270,15 @@ async function openJourney(id) {
     <section><div class="eyebrow">Ledger · hash-chained</div>${j.ledger.map(l => `<div class="small mono" style="padding:3px 0;border-bottom:1px dashed var(--line2)">${esc(l.action)} <span class="muted">· ${esc(l.hash.slice(0, 16))}…</span></div>`).join("")}</section>
   </aside>`;
   const close = () => { $("#drawer").innerHTML = ""; history.replaceState(null, "", location.pathname); };
+  const act = async (path, body) => {
+    try { await api(`/journeys/${encodeURIComponent(j.journey_id)}/${path}`, {method: "POST", body: JSON.stringify(body)});
+          openJourney(j.journey_id); render(true); }
+    catch (e) { $("#pnote").textContent = e.message; }
+  };
+  if ($("#papprove")) {
+    $("#papprove").onclick = () => act("approve", {approved_by: ME.name + " (dashboard)", message: $("#pmsg").value.trim() || null});
+    $("#pdismiss").onclick = () => act("dismiss", {dismissed_by: ME.name + " (dashboard)"});
+  }
   $("#x").onclick = close; $("#scrim").onclick = close;
   document.onkeydown = e => { if (e.key === "Escape") close(); };
 }
@@ -360,6 +378,22 @@ GET  /acp/products/KET-170                200   ← no power_watts
     const r = await api("/me/rotate-key", {method: "POST"}); KEY = r.api_key; store.set("hs_key", KEY); ME = await api("/me");
     $("#whmsg").innerHTML = `New key (copy it now): <span class="mono" style="word-break:break-all">${esc(r.api_key)}</span>`;
   };
+}
+
+async function patterns(v) {
+  const {patterns: ps, analyst} = await api("/patterns");
+  set(v, `<p class="small" style="margin:0 0 12px;max-width:80ch">Stops outside the playbook, grouped by what
+    they have in common. Nobody wrote a rule for these, so Handshake found them with its general detectors${analyst ? " and the analyst model" : ""}.
+    The biggest groups are the next rules worth writing: once a pattern is understood, it becomes a deterministic detector
+    and stops needing a person to approve each fix.</p>
+    <div class="card tw"><table><thead><tr><th>Pattern</th><th class="num">Journeys</th><th class="num">At risk</th>
+    <th class="num">Recovered</th><th class="num">Approved fixes</th><th>Example</th></tr></thead><tbody>
+    ${ps.map(p => `<tr class="click" data-j="${esc(p.journeys[0])}"><td><span class="chip ${p.cause === "UNKNOWN" ? "" : "violet"}">${esc(p.cause)}</span> ${esc(p.signature)}</td>
+      <td class="num">${p.count}</td><td class="num">${inr(p.at_risk)}</td><td class="num">${inr(p.recovered)}</td>
+      <td class="num">${p.approved}</td><td class="small" style="max-width:50ch">${esc((p.example || "").slice(0, 160))}</td></tr>`).join("")
+      || `<tr><td colspan="6"><div class="empty">Nothing outside the playbook yet. <a href="/demo">Send a mystery shopper</a>.</div></td></tr>`}
+    </tbody></table></div>`);
+  v.querySelectorAll("tr[data-j]").forEach(r => r.onclick = () => openJourney(r.dataset.j));
 }
 
 async function hooks(v) {

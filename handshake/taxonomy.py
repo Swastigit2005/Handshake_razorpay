@@ -11,6 +11,7 @@ from enum import Enum
 class Family(str, Enum):
     A = "A"  # pre-payment agent abandonment
     B = "B"  # post-authorisation payment failure
+    N = "N"  # outside the playbook: found by general detectors or the analyst
 
 
 @dataclass(frozen=True)
@@ -64,6 +65,18 @@ CAUSES = {
         Cause("B5", Family.B, "instrument_decline",
               "card expired, VPA invalid or method deregistered",
               ("I-08",)),
+        # Family N is open-ended. Nobody wrote a playbook entry for these; the
+        # evidence still says where and why the agent stopped. They never act
+        # on their own: a person approves the drafted re-offer (I-11).
+        Cause("N1", Family.N, "merchant_rejection",
+              "the shop refused a step with an error no playbook entry covers",
+              ("I-11",)),
+        Cause("N2", Family.N, "offer_mismatch",
+              "what was served is the weakest of the agent's options on a dimension it checks",
+              ("I-11",)),
+        Cause("N3", Family.N, "analyst_hypothesis",
+              "a cause outside the taxonomy, named by the analyst model from the trace",
+              ("I-11",)),
     ]
 }
 
@@ -103,6 +116,8 @@ INTERVENTIONS = {
                      "re-attempt inside permitted caps and cooldowns", False, False, 1),
         Intervention("I-10", "escalate_to_ops",
                      "route to a human queue as an unresolved exception", False, True, 3),
+        Intervention("I-11", "approved_proposal",
+                     "send a re-offer Handshake drafted and a person approved", False, True, 2),
     ]
 }
 

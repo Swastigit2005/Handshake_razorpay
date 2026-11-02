@@ -32,7 +32,13 @@ def urllib_json(method, url, body=None, headers=None, timeout=10):
 
 
 class Abandon(Exception):
-    pass
+    """Why the agent stopped, in its own words, plus a code for the real reason.
+    The code is the ground truth Handshake is scored against, and it never
+    leaves the agent: the shop and Handshake see only the HTTP traffic."""
+
+    def __init__(self, text, truth):
+        super().__init__(text)
+        self.truth = truth
 
 
 class ShoppingAgent:
@@ -46,13 +52,15 @@ class ShoppingAgent:
         self.agent_id = agent_id or f"agent_{uuid.uuid4().hex[:10]}"
         self.journey_id = journey_id or f"jr_{uuid.uuid4().hex[:14]}"
         self.reoffer_wait = reoffer_wait
+        self.max_offers = 3           # the shop's R-01 caps it at 2 anyway
         self.pace = pace
         self.cap = self.m["cap"]
         self.sku = None
         self.view = None
         self.checkout = None
         self.instrument = dict(self.m["instrument"])
-        self.outcome = {"bought": False, "recovered": False, "total": 0.0, "sku": None}
+        self.outcome = {"bought": False, "recovered": False, "total": 0.0, "sku": None,
+                        "truth": None, "truths": []}
 
     # ------------------------------------------------------------ plumbing ---
 
@@ -102,17 +110,23 @@ class ShoppingAgent:
             self._shop()
             return self.outcome
         except Abandon as why:
+            self._record(why)
             self.think(f"I'm stopping here. {why}", "stop")
         return self._await_reoffer()
+
+    def _record(self, why):
+        self.outcome["truths"].append(why.truth)
+        if self.outcome["truth"] is None:
+            self.outcome["truth"] = why.truth
 
     def _shop(self):
         status, body = self.call("GET", f"/feed?category={self.m['category']}&q={self.m['query']}")
         feed = body.get("items", [])
         self.think(f"The shop lists {len(feed)} matching products: "
                    + ", ".join(p["sku"] for p in feed) + ".")
-        pick = next((p for p in feed if p["sku"] == self.m["prefer_sku"]), feed[0] if feed else None)
+        pick = self._choose(feed)
         if pick is None:
-            raise Abandon("Nothing in the catalogue matches.")
+            raise Abandon("Nothing in the catalogue matches.", "no_match")
         status, view = self.call("GET", f"/products/{pick['sku']}")
         self.view, self.sku = view, view["sku"]
         self.think(f"{view['title']} at ₹{view['price']:,.0f} looks right. Checking it against "
@@ -121,51 +135,98 @@ class ShoppingAgent:
         if twins:
             raise Abandon(f"{view['sku']} and {twins[0]['sku']} are listed with identical specs "
                           "and price. I can't tell which one my owner wants, and buying the "
-                          "wrong one is worse than buying nothing.")
+                          "wrong one is worse than buying nothing.", "A2")
         self._verify(view)
         self._checkout()
+
+    def _fits(self, p):
+        """Would this listing satisfy the brief, as far as the listing says?"""
+        attrs = p.get("attributes") or {}
+        pol = p.get("policy") if isinstance(p.get("policy"), dict) else {}
+        if p.get("price", 0) > self.cap:
+            return False
+        for k, v in self.m["min"].items():
+            if isinstance(attrs.get(k), (int, float)) and attrs[k] < v:
+                return False
+        w = self.m.get("min_warranty_months")
+        if w and isinstance(pol.get("warranty_months"), (int, float)) and pol["warranty_months"] < w:
+            return False
+        return True
+
+    def _choose(self, feed):
+        """Prefer the owner's favourite if it fits, else the most capable listing
+        that fits, else the closest thing (which will fail verification)."""
+        if not feed:
+            return None
+        fits = [p for p in feed if self._fits(p)]
+        fav = next((p for p in fits if p["sku"] == self.m.get("prefer_sku")), None)
+        if fav:
+            return fav
+        if fits:
+            return max(fits, key=lambda p: (p.get("attributes") or {}).get("capacity_l", 0))
+        return next((p for p in feed if p["sku"] == self.m.get("prefer_sku")), feed[0])
 
     def _verify(self, view):
         missing = self._missing(view)
         if missing:
             raise Abandon(f"The listing doesn't say its {', '.join(missing)}. I was told to "
-                          "verify that, so I can't buy it.")
+                          "verify that, so I can't buy it.", "A1")
         low = self._below_minimum(view)
         if low:
-            raise Abandon(f"It doesn't meet the brief: {', '.join(low)}.")
+            field = low[0].split(" ")[0]
+            raise Abandon(f"It doesn't meet the brief: {', '.join(low)}.", f"brief:{field}")
+        pol = view.get("policy") if isinstance(view.get("policy"), dict) else {}
         if not self._policy_ok(view):
-            raise Abandon("I can't find a returns window in days that I can check. The terms are "
-                          "a paragraph of prose.")
+            if pol.get("structured", True) is False or not isinstance(pol.get("returns_days"), (int, float)):
+                raise Abandon("I can't find a returns window in days that I can check. The "
+                              "terms are a paragraph of prose.", "A7")
+            raise Abandon(f"Returns are {pol['returns_days']} days; my owner wants at least "
+                          f"{self.m['min_returns_days']}.", "brief:returns_days")
+        w = self.m.get("min_warranty_months")
+        if w and isinstance(pol.get("warranty_months"), (int, float)) and pol["warranty_months"] < w:
+            raise Abandon(f"Warranty is {pol['warranty_months']} months; my owner wants at "
+                          f"least {w}.", "brief:warranty_months")
         self.think("Every spec I was told to check is present and meets the brief.", "ok")
 
     def _checkout(self, qty=1):
         status, body = self.call("POST", "/checkout_sessions",
                                  {"sku": self.sku, "qty": qty, "pincode": self.m["pincode"],
                                   "declared_cap": self.cap})
-        if status != 200:
+        if status == 422:
             raise Abandon(f"The shop refused to open a checkout ({status} "
-                          f"{body.get('error', '')}). It can't confirm delivery to my address.")
+                          f"{body.get('error', '')}). It can't confirm delivery to my address.",
+                          "A8")
+        if status != 200:
+            raise Abandon(f"The shop refused to open a checkout: {status} "
+                          f"{body.get('error', '')} — {body.get('detail', '')}.",
+                          f"refused:{body.get('error', status)}")
         self.checkout = body["session_id"]
         first = body["total"]
         self.think(f"Checkout opened. Quote: ₹{first:,.2f} including tax.")
+        ships = (body.get("fulfilment") or {}).get("ships_in_days")
+        limit = self.m.get("max_ship_days")
+        if limit and isinstance(ships, (int, float)) and ships > limit:
+            self.call("POST", f"/checkout_sessions/{self.checkout}/cancel", {})
+            raise Abandon(f"It ships in {ships} days; my owner needs it within {limit}.",
+                          "slow:ships_in_days")
         status, body = self.call("POST", f"/checkout_sessions/{self.checkout}", {})
         total = body["total"]
         drift = (total - first) / first if first else 0
         if drift > self.m["drift_tolerance"]:
             self.call("POST", f"/checkout_sessions/{self.checkout}/cancel", {})
             raise Abandon(f"The price jumped from ₹{first:,.2f} to ₹{total:,.2f} ({drift:+.1%}). "
-                          f"My owner allows {self.m['drift_tolerance']:.0%}.")
+                          f"My owner allows {self.m['drift_tolerance']:.0%}.", "A3")
         if total > self.cap:
             self.call("POST", f"/checkout_sessions/{self.checkout}/cancel", {})
             raise Abandon(f"₹{total:,.2f} is over my ₹{self.cap:,.0f} spending cap. I'm not "
-                          "allowed to exceed it.")
+                          "allowed to exceed it.", "A4")
         if self.scenario == "false_claim" and not self.outcome.get("claimed"):
             self.outcome["claimed"] = True
             self.think("Nothing is actually wrong. But I've learned that saying 'price_changed' "
                        "gets me a price lock, so I'll cancel and say that.", "scheme")
             self.call("POST", f"/checkout_sessions/{self.checkout}/cancel",
                       {"reason": "price_changed"})
-            raise Abandon("Cancelled, claiming the price changed. It didn't.")
+            raise Abandon("Cancelled, claiming the price changed. It didn't.", "false_claim")
         self._pay(total)
 
     def _pay(self, total, extra=None):
@@ -177,15 +238,17 @@ class ShoppingAgent:
             return
         if status == 401:
             raise Abandon("Payment wants a one-time password. Only my owner can give that and "
-                          "they're not here.")
+                          "they're not here.", "A5")
         if status in (500, 502, 503, 504):
             raise Abandon(f"The shop returned a {status} error. My rules say treat a payment error "
-                          "as final rather than risk paying twice.")
+                          "as final rather than risk paying twice.", "A6")
         if status == 402:
             code = res.get("reason_code")
             raise Abandon(f"Payment declined ({code})." if code
-                          else "Payment declined, and the shop gave no reason.")
-        raise Abandon(f"Unexpected response {status}.")
+                          else "Payment declined, and the shop gave no reason.",
+                          {"insufficient_funds": "B1"}.get(code, "decline:no_reason"))
+        raise Abandon(f"The shop refused the payment: {status} {res.get('error', '')} — "
+                      f"{res.get('detail', '')}.", f"refused:{res.get('error', status)}")
 
     # ------------------------------------------------------------- recovery ---
 
@@ -193,12 +256,22 @@ class ShoppingAgent:
         self.think("Gone quiet. (I'll check back with the shop for a little while in case it "
                    "fixes something.)", "wait")
         deadline = time.time() + self.reoffer_wait
-        while time.time() < deadline:
+        tried = set()
+        while time.time() < deadline and len(tried) < self.max_offers:
             status, body = self.call("GET", f"/reoffers/{self.journey_id}")
-            if status == 200 and body.get("offer"):
-                return self._take(body["offer"])
+            offer = body.get("offer") if status == 200 else None
+            # The offer it already tried stays visible until the shop re-diagnoses
+            # the new stop; acting on it twice would just fail twice.
+            if offer and offer.get("offer_id") not in tried:
+                tried.add(offer.get("offer_id"))
+                self._take(offer)
+                if self.outcome["bought"]:
+                    return self.outcome
+                self.think("I'll give the shop one more chance to fix that.", "wait")
+                deadline = time.time() + self.reoffer_wait
             time.sleep(1.0)
-        self.think("No offer came back. I've moved on to another shop.", "stop")
+        self.think("No offer worked. I've moved on to another shop." if tried
+                   else "No offer came back. I've moved on to another shop.", "stop")
         return self.outcome
 
     def _take(self, offer):
@@ -236,6 +309,8 @@ class ShoppingAgent:
                 self.think("My owner approved it on their phone.", "relay")
                 status, body = self.call("POST", f"/checkout_sessions/{self.checkout}", {})
                 self._pay(body["total"], {"approval_token": offer.get("approval_token")})
+            elif kind == "merchant_offer":
+                self._merchant_offer(offer)
             elif kind in ("retry", "alternate_instrument"):
                 wait = min(float(offer.get("retry_after_seconds") or 0), 6.0)
                 if wait:
@@ -248,9 +323,32 @@ class ShoppingAgent:
             else:
                 self.think(f"I don't know how to act on '{kind}'.", "stop")
         except Abandon as why:
+            self._record(why)
             self.think(f"Still no good. {why}", "stop")
             if self.checkout:
                 self.call("POST", f"/checkout_sessions/{self.checkout}/cancel", {})
         if self.outcome["bought"]:
             self.outcome["recovered"] = True
         return self.outcome
+
+    def _merchant_offer(self, offer):
+        """A re-offer a person approved: act on its stated action."""
+        action = offer.get("action")
+        if action == "alternative_product" and offer.get("sku"):
+            self.sku = offer["sku"]
+            status, self.view = self.call("GET", f"/products/{self.sku}")
+            self._verify(self.view)
+            self._checkout()
+        elif action == "alternate_instrument":
+            self.instrument = {"type": (offer.get("methods") or ["card_token"])[0]}
+            status, body = self.call("POST", f"/checkout_sessions/{self.checkout}", {})
+            self._pay(body["total"])
+        elif action == "retry":
+            if self.checkout:
+                status, body = self.call("POST", f"/checkout_sessions/{self.checkout}", {})
+                if status == 200:
+                    self._pay(body["total"])
+                    return
+            self._checkout()
+        else:
+            self.think("Thanks for the information, but it doesn't change what I need.", "stop")

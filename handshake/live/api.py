@@ -20,7 +20,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ..taxonomy import CAUSES, INTERVENTIONS, RULES
-from . import pipeline, store, webhooks
+from . import analyst, pipeline, store, webhooks
 from .events import TYPES, InvalidEvent, describe
 
 router = APIRouter(prefix="/v1", tags=["live"])
@@ -148,6 +148,18 @@ class KillSwitch(BaseModel):
     on: bool
 
 
+class Approval(BaseModel):
+    approved_by: str = Field("", max_length=120)
+    message: Optional[str] = Field(None, max_length=600)
+    action: Optional[str] = None
+    sku: Optional[str] = None
+
+
+class Dismissal(BaseModel):
+    dismissed_by: str = Field("", max_length=120)
+    note: str = Field("", max_length=300)
+
+
 # -------------------------------------------------------------- merchants ---
 
 @router.post("/merchants", status_code=201)
@@ -261,8 +273,10 @@ def _summary(j):
             "last_event_at": j["last_event_at"], "close_reason": j["close_reason"],
             "cause": dg.get("cause"), "cause_name": dg.get("name"),
             "confidence": dg.get("confidence"), "explanation": dg.get("explanation"),
-            "intervention": vd.get("intervention_id") or None,
-            "binding_rule": vd.get("binding_rule") or None}
+            "intervention": (j.get("directive") or {}).get("intervention")
+            or vd.get("intervention_id") or None,
+            "binding_rule": vd.get("binding_rule") or None,
+            "has_proposal": bool(vd.get("proposal"))}
 
 
 @router.get("/journeys")
@@ -315,6 +329,72 @@ def principal_declined(journey_id: str, merchant=Depends(merchant_auth)):
     store.ledger_append(merchant["merchant_id"], j["journey_id"], "principal", "declined",
                         outcome={"rule": "R-03"})
     return {"declined": True, "agent_id": j["agent_id"]}
+
+
+@router.post("/journeys/{journey_id}/approve")
+def approve(journey_id: str, body: Approval, merchant=Depends(merchant_auth)):
+    """Send the drafted re-offer (optionally edited) for a journey the rules would
+    not act on alone. Recorded in the ledger with the approver's name."""
+    j = _journey_or_404(merchant, journey_id)
+    if body.action and body.action not in ("alternative_product", "alternate_instrument",
+                                           "retry", "information"):
+        raise APIError(422, "invalid_request", f"unknown action {body.action!r}")
+    try:
+        out = pipeline.approve(merchant, j["journey_id"], body.approved_by or "dashboard",
+                               {"message": body.message, "action": body.action,
+                                "sku": body.sku})
+    except pipeline.ApprovalRefused as exc:
+        raise APIError(409, "approval_refused", str(exc))
+    return _summary(out)
+
+
+@router.post("/journeys/{journey_id}/dismiss")
+def dismiss(journey_id: str, body: Dismissal, merchant=Depends(merchant_auth)):
+    j = _journey_or_404(merchant, journey_id)
+    try:
+        out = pipeline.dismiss(merchant, j["journey_id"], body.dismissed_by or "dashboard",
+                               body.note)
+    except pipeline.ApprovalRefused as exc:
+        raise APIError(409, "approval_refused", str(exc))
+    return _summary(out)
+
+
+def _signature(j):
+    dg, d = j["diagnosis"] or {}, (j["diagnosis"] or {}).get("detail") or {}
+    cause = dg.get("cause") or "UNKNOWN"
+    if cause == "N1":
+        return f"refused: {d.get('step', '?')} → {d.get('status')} {d.get('error') or 'no code'}"
+    if cause == "N2":
+        return f"weakest option on {str(d.get('facet', '?')).replace('_', ' ')}"
+    if cause == "N3":
+        return f"analyst: {str(d.get('label', 'unlabelled')).replace('_', ' ')}"
+    return f"unexplained, stopped at {dg.get('stage', j['stage'])}"
+
+
+@router.get("/patterns")
+def patterns(limit: int = 1000, merchant=Depends(merchant_auth)):
+    """Failures outside the playbook, grouped. The biggest groups are the next
+    detectors worth writing: once a pattern is understood, it becomes a rule."""
+    groups = {}
+    for j in store.list_journeys(merchant["merchant_id"], None, max(1, min(limit, 5000)), 0):
+        dg = j["diagnosis"] or {}
+        cause = dg.get("cause")
+        if not cause or not (cause == "UNKNOWN" or cause.startswith("N")):
+            continue
+        key = _signature(j)
+        g = groups.setdefault(key, {"signature": key, "cause": cause, "count": 0,
+                                    "at_risk": 0.0, "recovered": 0.0, "approved": 0,
+                                    "journeys": [], "example": dg.get("explanation", "")})
+        g["count"] += 1
+        g["at_risk"] = round(g["at_risk"] + j["basket_value"], 2)
+        if j["status"] == "recovered":
+            g["recovered"] = round(g["recovered"] + j["recovered_value"], 2)
+        if (j["directive"] or {}).get("intervention") == "I-11":
+            g["approved"] += 1
+        if len(g["journeys"]) < 5:
+            g["journeys"].append(j["journey_id"])
+    return {"patterns": sorted(groups.values(), key=lambda g: (-g["at_risk"], -g["count"])),
+            "analyst": analyst.available()}
 
 
 @router.get("/reoffers/{ref}")

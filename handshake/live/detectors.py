@@ -67,6 +67,19 @@ DECLARED = {
 UNCORROBORATED_SCORE = 0.45
 CONTEST_MARGIN = 0.10
 CONTEST_PENALTY = 0.15
+# Family N (outside the playbook) never clears R-10's default 0.70 by itself:
+# an open-ended guess can reach a person, never move money on its own.
+NOVEL_CAP = 0.66
+
+# Facets an agent compares between offers, and which way is better. Price is
+# left out on purpose: within budget, "it was dearer" is a reason a person
+# gives, and the cap breach (A4) already covers the case where it binds.
+LOWER_IS_BETTER = {"ships_in_days", "delivery_days", "lead_time_days"}
+SKIP_FACETS = {"price", "weight_g", "tax_rate", "stock"}
+STEP_LABEL = {"feed.read": "catalogue request", "product.view": "product request",
+              "checkout.create": "attempt to open a checkout",
+              "checkout.update": "re-quote", "checkout.complete": "payment attempt",
+              "checkout.cancel": "cancellation"}
 
 
 class Hypothesis:
@@ -116,7 +129,9 @@ class Trace:
 
     @property
     def created(self):
-        return next((e for e in self.of("checkout.create") if e["http_status"] == 200), None)
+        """The checkout session the agent was last working in."""
+        return next((e for e in reversed(self.of("checkout.create")) if e["http_status"] == 200),
+                    None)
 
     @property
     def last(self):
@@ -241,6 +256,19 @@ def detect_cap(tr, ctx):
     if not isinstance(total, (int, float)) or total <= cap:
         return []
     paid_after = bool(tr.after(last, "checkout.complete"))
+    first = created["response"].get("total")
+    if isinstance(first, (int, float)) and first <= cap and not paid_after:
+        # The first quote fitted. The cap was breached only because the price
+        # moved, so the price move is the root cause and a price lock fixes both.
+        return [Hypothesis(
+            "A4", 0.55,
+            f"The basket went over the ₹{cap:,.2f} cap, but only after the re-quote: the "
+            f"first quote (₹{first:,.2f}) fitted. This is a consequence of the price move, "
+            "not a separate cause.",
+            [_ev(created, "first quote within the cap", observed=first, expected=f"≤ {cap}"),
+             _ev(last, "re-quote above the cap", observed=total)],
+            {"declared_cap": cap, "basket_total": total, "consequence_of": "A3",
+             "sku": created.get("sku") or created["request"].get("sku", "")})]
     return [Hypothesis(
         "A4", 0.2 if paid_after else 0.93,
         f"The basket came to ₹{total:,.2f} against a spending cap of ₹{cap:,.2f} that the "
@@ -347,9 +375,141 @@ def detect_variant_collision(tr, ctx):
         evidence, {"sku": sku, "collides_with": twins[0].get("sku")})]
 
 
+# ------------------------------------------------- open-ended (family N) ---
+#
+# The detectors above each recognise one known signature. The two below don't
+# know what they are looking for in advance. They ask general questions any
+# abandonment can answer: did the shop refuse the last thing the agent asked
+# for, and was what the agent was shown worse than its alternatives?
+
+def _shopping(tr):
+    return [e for e in tr.events if e["type"] != "reoffer.fetch"]
+
+
+def current_sku(tr):
+    for e in reversed(tr.events):
+        sku = e.get("sku") or e["request"].get("sku") or ""
+        if sku and e["type"] in ("product.view", "checkout.create"):
+            return sku
+    return ""
+
+
+HANDLED_ERRORS = AUTH_ERRORS | TRANSIENT_ERRORS | FULFILMENT_ERRORS
+
+
+def detect_rejection(tr, ctx):
+    # A polite cancel after a refusal is the agent leaving, not the reason it left.
+    shopping = [e for e in _shopping(tr) if e["type"] != "checkout.cancel"]
+    if not shopping:
+        return []
+    last = shopping[-1]
+    if any(e["type"] != "checkout.cancel" and e["seq"] > last["seq"] for e in _shopping(tr)):
+        return []
+    st, res = last["http_status"], last["response"]
+    err = str(res.get("error") or "").lower()
+    if not 400 <= st < 500 or st in (401, 402) or err in HANDLED_ERRORS \
+            or (st == 422 and "servic" in err):
+        return []
+    detail = str(res.get("detail") or res.get("message") or "")
+    step = STEP_LABEL.get(last["type"], last["type"])
+    return [Hypothesis(
+        "N1", NOVEL_CAP,
+        f"The shop answered the agent's {step} with {st} "
+        f"'{err or 'no error code'}'{(': ' + detail) if detail else ''}, and the agent "
+        "stopped there. No playbook entry covers this error, so Handshake drafts a fix "
+        "for a person to approve.",
+        [_ev(last, "request refused, nothing after it", observed=f"{st} {err}".strip())],
+        {"status": st, "error": err, "detail": detail, "step": last["type"],
+         "sku": current_sku(tr)})]
+
+
+def facets(record, served_fulfilment=None):
+    """Numeric facets of an offer that an agent can compare."""
+    out = {}
+    for key, value in (record.get("attributes") or {}).items():
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            out[key] = value
+    policy = record.get("policy")
+    if isinstance(policy, dict):
+        for key in ("returns_days", "warranty_months"):
+            if isinstance(policy.get(key), (int, float)):
+                out[key] = policy[key]
+    ful = served_fulfilment or record.get("fulfilment") or {}
+    if isinstance(ful.get("ships_in_days"), (int, float)):
+        out["ships_in_days"] = ful["ships_in_days"]
+    return {k: v for k, v in out.items() if k not in SKIP_FACETS}
+
+
+def _worse(facet, mine, theirs):
+    return mine > theirs if facet in LOWER_IS_BETTER else mine < theirs
+
+
+def detect_offer_mismatch(tr, ctx):
+    shopping = _shopping(tr)
+    if not shopping or tr.of("checkout.complete"):
+        return []
+    last = shopping[-1]
+    if last["http_status"] != 200 or last["type"] not in (
+            "product.view", "checkout.create", "checkout.update", "checkout.cancel"):
+        return []
+    sku = current_sku(tr)
+    views = [e for e in tr.of("product.view") if (e.get("sku") or e["request"].get("sku")) == sku
+             and e["http_status"] == 200]
+    if not sku or not views:
+        return []
+    served = views[-1]["response"]
+    created = tr.created
+    served_ful = (created["response"].get("fulfilment") if created else None) or None
+    mine = facets(served, served_ful)
+    if not mine:
+        return []
+
+    feeds = tr.of("feed.read")
+    shown = [p for p in ((feeds[-1]["response"].get("items") if feeds else None) or [])
+             if p.get("sku") != sku]
+    pool = shown or [p for p in ctx["all_products"]()
+                     if p.get("category") == served.get("category") and p.get("sku") != sku]
+    peers = []
+    for p in pool:
+        truth = ctx["catalog"](p.get("sku", "")) or {}
+        merged = {**truth, **p}
+        merged["fulfilment"] = truth.get("fulfilment") or p.get("fulfilment")
+        peers.append((p.get("sku"), facets(merged)))
+    peers = [(s, f) for s, f in peers if f]
+    if not peers:
+        return []
+
+    best = None
+    for facet, value in mine.items():
+        values = [(s, f[facet]) for s, f in peers if facet in f]
+        if not values or not all(_worse(facet, value, v) for _, v in values):
+            continue
+        top_sku, top = (min if facet in LOWER_IS_BETTER else max)(values, key=lambda x: x[1])
+        gap = abs(value - top) / max(abs(value), abs(top), 1e-9)
+        if best is None or gap > best[3]:
+            best = (facet, value, (top_sku, top), gap)
+    if best is None:
+        return []
+    facet, value, (top_sku, top), gap = best
+    score = min(NOVEL_CAP, 0.5 + 0.16 * gap)
+    where = views[-1] if facet != "ships_in_days" or not created else created
+    nice = facet.replace("_", " ")
+    return [Hypothesis(
+        "N2", score,
+        f"{sku} was the weakest of the agent's options on {nice}: {value} against "
+        f"{top} for {top_sku}. The agent looked, then stopped. Agents compare offers on "
+        "exactly this kind of field, so this is the likeliest reason, but it is a "
+        "hypothesis: a person approves any re-offer.",
+        [_ev(where, f"served {nice} worse than every alternative", observed=value,
+             expected=f"{'≤' if facet in LOWER_IS_BETTER else '≥'} {top} ({top_sku})")],
+        {"sku": sku, "facet": facet, "served": value, "best_alternative": top_sku,
+         "alternative_value": top, "gap": round(gap, 3)})]
+
+
 DETECTORS = (detect_rail_code, detect_auth_wall, detect_transient_error,
              detect_fulfilment, detect_quote_drift, detect_cap,
-             detect_attribute_void, detect_policy, detect_variant_collision)
+             detect_attribute_void, detect_policy, detect_variant_collision,
+             detect_rejection, detect_offer_mismatch)
 
 
 # ------------------------------------------------------------------ verdict ---
@@ -362,11 +522,36 @@ def _declared(tr):
     return None, ""
 
 
-def diagnose(events, schema, catalog_lookup, all_products=lambda: []):
-    """Diagnose one closed journey. Pure: same events, same answer."""
+ANALYST_BELOW = 0.70
+
+
+def current_attempt(events):
+    """The events of the agent's latest attempt. After it collects a re-offer and
+    tries again, the earlier attempt was already diagnosed; reading it again
+    would explain the old stop instead of the new one. Catalogue reads from the
+    earlier attempt are kept, since they are still what the agent was shown."""
+    last_offer = max((e["seq"] for e in events
+                      if e["type"] == "reoffer.fetch" and e["http_status"] == 200), default=None)
+    if last_offer is None:
+        return events, False
+    later = [e for e in events if e["seq"] > last_offer]
+    if not any(e["type"] != "reoffer.fetch" for e in later):
+        return events, False
+    feeds = [e for e in events if e["type"] == "feed.read" and e["seq"] < last_offer][-1:]
+    return feeds + later, True
+
+
+def diagnose(events, schema, catalog_lookup, all_products=lambda: [], analyst=None):
+    """Diagnose one closed journey. Pure without `analyst`: same events, same
+    answer. With it, a model is consulted only when no detector reaches
+    ANALYST_BELOW — known causes stay fully deterministic."""
+    events, retried = current_attempt(events)
     tr = Trace(events)
     ctx = {"schema": schema or {}, "catalog": catalog_lookup,
            "all_products": all_products, "observations": []}
+    if retried:
+        ctx["observations"].append("This is the agent's second attempt, after a re-offer. "
+                                   "Only events since then are read.")
 
     hyps = []
     for detector in DETECTORS:
@@ -396,6 +581,13 @@ def diagnose(events, schema, catalog_lookup, all_products=lambda: []):
         else:
             ctx["observations"].append(f"Agent stated '{said}', which maps to no known cause.")
 
+    method = "evidence-v2"
+    if analyst is not None and (not hyps or max(h.score for h in hyps) < ANALYST_BELOW):
+        extra = analyst(events)
+        if extra is not None:
+            hyps.append(extra)
+            method = "evidence-v2+analyst"
+
     hyps.sort(key=lambda h: -h.score)
     stage = tr.stage()
     last = tr.last
@@ -409,7 +601,7 @@ def diagnose(events, schema, catalog_lookup, all_products=lambda: []):
                                 "was served explains it — the product may simply not have "
                                 "matched what it was sent to buy.")
         return {"cause": UNKNOWN, "name": "unclassified", "confidence": 0.0,
-                "method": "evidence-v2", "stage": stage, "contested": False,
+                "method": method, "stage": stage, "contested": False,
                 "explanation": "Nothing in the traffic explains why this journey stopped. "
                                "Handshake will not guess: it goes to the exceptions queue.",
                 "hypotheses": [], "evidence": [], "detail": {},
@@ -426,7 +618,7 @@ def diagnose(events, schema, catalog_lookup, all_products=lambda: []):
             f"{hyps[1].cause} {hyps[1].score:.2f}); confidence lowered to "
             f"{confidence:.2f}.")
     return {"cause": top.cause, "name": CAUSES[top.cause].name, "confidence": round(confidence, 2),
-            "method": "evidence-v2", "stage": stage, "contested": contested,
+            "method": method, "stage": stage, "contested": contested,
             "explanation": top.summary, "hypotheses": [h.as_dict() for h in hyps],
             "evidence": top.evidence, "detail": top.detail, "observations": observations,
             "declared": declared}

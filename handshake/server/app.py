@@ -18,6 +18,7 @@ HS_DB            SQLite path. Runs, sessions and ledgers survive a restart.
 import os
 import threading
 import time
+from typing import Optional
 
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -603,8 +604,15 @@ def web_asset(name: str):
 
 
 class DemoRun(BaseModel):
-    scenario: str
+    scenario: str = "mystery"
     pace: float = 0.35
+    seed: Optional[int] = None
+
+
+class DemoApproval(BaseModel):
+    message: Optional[str] = None
+    action: Optional[str] = None
+    sku: Optional[str] = None
 
 
 @app.get("/demo/api/scenarios", include_in_schema=False)
@@ -617,22 +625,46 @@ def demo_scenarios():
 def demo_start(body: DemoRun, request: Request):
     if not SANDBOX:
         return JSONResponse({"error": "the sandbox demo is disabled (HS_DEMO_SANDBOX=0)"}, 403)
-    if body.scenario not in SCENARIOS:
+    if body.scenario != "mystery" and body.scenario not in SCENARIOS:
         return JSONResponse({"error": f"unknown scenario {body.scenario!r}"}, 404)
     if sum(1 for r in demo_runner.RUNS.values() if r["status"] == "running") >= 4:
         return JSONResponse({"error": "four demo agents are already shopping; try again"}, 429)
     demo_runner.bootstrap(_self_url(request))
-    run = demo_runner.start(body.scenario, pace=max(0.0, min(body.pace, 2.0)))
+    run = demo_runner.start(body.scenario, pace=max(0.0, min(body.pace, 2.0)), seed=body.seed)
     return {"run_id": run["run_id"], "journey_id": run["journey_id"],
             "agent_id": run["agent_id"]}
 
 
 @app.get("/demo/api/runs/{run_id}", include_in_schema=False)
-def demo_view(run_id: str):
-    out = demo_runner.view(run_id)
+def demo_view(run_id: str, peek: bool = False):
+    """A mystery run is sealed until Handshake answers; `peek=1` opens it early."""
+    out = demo_runner.view(run_id, peek=peek)
     if out is None:
         return JSONResponse({"error": "unknown run"}, 404)
     return out
+
+
+@app.post("/demo/api/runs/{run_id}/approve", include_in_schema=False)
+def demo_approve(run_id: str, body: DemoApproval):
+    """The viewer plays the merchant: send Handshake's drafted re-offer."""
+    from ..live.pipeline import ApprovalRefused
+    try:
+        j = demo_runner.approve(run_id, body.message, body.action, body.sku)
+    except KeyError:
+        return JSONResponse({"error": "unknown run"}, 404)
+    except ApprovalRefused as exc:
+        return JSONResponse({"error": str(exc)}, 409)
+    return {"status": j["status"]}
+
+
+@app.get("/demo/api/scorecard", include_in_schema=False)
+def demo_scorecard():
+    return {**demo_runner.scorecard(), "analyst": _analyst_available()}
+
+
+def _analyst_available():
+    from ..live import analyst
+    return analyst.available()
 
 
 @app.get("/demo/api/sandbox", include_in_schema=False)

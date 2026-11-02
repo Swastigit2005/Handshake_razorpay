@@ -45,8 +45,8 @@ class _ClientSlot:
 class ShopState:
     def __init__(self):
         self.lock = threading.Lock()
-        self.faults = {}          # journey_id -> scenario fault name
-        self.resolved = {}        # journey_id -> set of resolved fault names
+        self.faults = {}          # journey_id -> set of hidden shop conditions
+        self.resolved = {}        # journey_id -> set of conditions since fixed
         self.patches = {}         # journey_id -> {sku: {attr: value}}
         self.policies = {}        # journey_id -> {sku: policy}
         self.withdrawn = {}       # journey_id -> {sku}
@@ -64,14 +64,14 @@ class ShopState:
             self.log.setdefault(journey_id or "-", []).append(
                 {"t": time.time(), "kind": kind, "line": line})
 
-    def fault(self, journey_id):
-        f = self.faults.get(journey_id)
-        return None if f in self.resolved.get(journey_id, set()) else f
+    def has(self, journey_id, condition):
+        return condition in self.faults.get(journey_id, set()) \
+            and condition not in self.resolved.get(journey_id, set())
 
-    def resolve(self, journey_id, fault=None):
-        f = fault or self.faults.get(journey_id)
-        if f:
-            self.resolved.setdefault(journey_id, set()).add(f)
+    def resolve(self, journey_id, *conditions):
+        """Mark conditions fixed; with none named, every condition on the journey."""
+        names = conditions or tuple(self.faults.get(journey_id, ()))
+        self.resolved.setdefault(journey_id, set()).update(names)
 
 
 SHOP = ShopState()
@@ -95,11 +95,10 @@ def _served(product, jid):
     """A product record as the storefront serves it to an agent, after this
     journey's fault and any repairs the shop has applied since."""
     p = copy.deepcopy(product)
-    fault = SHOP.fault(jid)
     patch = SHOP.patches.get(jid, {}).get(p["sku"], {})
-    if fault == "missing_attribute" and p["sku"] == "KET-170":
+    if SHOP.has(jid, "missing_attribute") and p["sku"] == "KET-170":
         p["attributes"].pop("power_watts", None)
-    if fault == "prose_policy" and p["sku"] == "KET-170":
+    if SHOP.has(jid, "prose_policy") and p["sku"] == "KET-170":
         p["policy"] = {"text": "Returns are accepted within a reasonable period, subject to "
                                "inspection and our standard terms.", "structured": False}
     p["attributes"].update(patch)
@@ -112,7 +111,7 @@ def _served(product, jid):
 
 def _feed(jid):
     items = [_served(p, jid) for p in PIM if p["stock"] > 0]
-    if SHOP.fault(jid) == "variant_collision" and "KET-170-B" not in SHOP.withdrawn.get(jid, set()):
+    if SHOP.has(jid, "variant_collision") and "KET-170-B" not in SHOP.withdrawn.get(jid, set()):
         twin = _served(pim("KET-170"), jid)
         twin["sku"] = "KET-170-B"
         items.insert(1, twin)
@@ -133,7 +132,7 @@ def feed(category: str = "", q: str = "", x_agent_journey: str = Header(default=
          x_demo_scenario: str = Header(default="")):
     jid = _journey(x_agent_journey)
     if x_demo_scenario and jid not in SHOP.faults:
-        SHOP.faults[jid] = x_demo_scenario or None
+        SHOP.faults[jid] = {c for c in x_demo_scenario.split(",") if c}
     items = [p for p in _feed(jid) if (not category or p["category"] == category)
              and (not q or q.lower() in p["title"].lower())]
     SHOP.note(jid, f"GET /acp/feed?category={category}&q={q} → 200 ({len(items)} items)")
@@ -162,17 +161,24 @@ async def create_session(request: Request, x_agent_journey: str = Header(default
     if base is None:
         SHOP.note(jid, f"POST /acp/checkout_sessions → 404 unknown_sku")
         return JSONResponse({"error": "unknown_sku"}, 404)
-    if SHOP.fault(jid) == "unserviceable" and sku not in SHOP.serviceable.get(jid, set()):
+    if SHOP.has(jid, "unserviceable") and sku not in SHOP.serviceable.get(jid, set()):
         SHOP.note(jid, f"POST /acp/checkout_sessions → 422 fulfilment_undetermined")
         return JSONResponse({"error": "fulfilment_undetermined",
                              "detail": "no serviceable route for this address"}, 422)
+    if SHOP.has(jid, "out_of_stock") and sku.startswith("KET-170"):
+        SHOP.note(jid, f"POST /acp/checkout_sessions → 409 insufficient_stock")
+        return JSONResponse({"error": "insufficient_stock",
+                             "detail": f"{sku} is not available in the requested quantity"}, 409)
+    ships = base["fulfilment"]["ships_in_days"]
+    if SHOP.has(jid, "slow_delivery") and sku.startswith("KET-170"):
+        ships = 9                          # a warehouse transfer nobody put in the feed
     cid = f"cs_{uuid.uuid4().hex[:12]}"
     SHOP.sessions[cid] = {"journey": jid, "sku": sku, "qty": qty, "unit": base["price"],
                           "tax_rate": base["tax_rate"], "locked_total": None,
                           "pincode": pincode, "state": "open", "approval": None,
                           "attempts": 0}
     out = {"session_id": cid, "sku": sku, "qty": qty,
-           "fulfilment": {"ships_in_days": base["fulfilment"]["ships_in_days"]},
+           "fulfilment": {"ships_in_days": ships},
            **_totals(base["price"], qty, base["tax_rate"])}
     SHOP.note(jid, f"POST /acp/checkout_sessions → 200 {cid} total ₹{out['total']:,.2f}")
     return out
@@ -184,9 +190,12 @@ def update_session(cid: str):
     if s is None:
         return JSONResponse({"error": "unknown_session"}, 404)
     unit = s["unit"]
-    if SHOP.fault(s["journey"]) == "price_drift" and s["locked_total"] is None:
+    if SHOP.has(s["journey"], "price_drift") and s["locked_total"] is None:
         unit = round(unit * 1.09, 2)
     totals = _totals(unit, s["qty"], s["tax_rate"])
+    if SHOP.has(s["journey"], "shipping_fee") and s["locked_total"] is None:
+        totals["shipping"] = 149.0         # appears only at re-quote, never in the feed
+        totals["total"] = round(totals["total"] + 149.0, 2)
     if s["locked_total"] is not None:
         totals["total"] = s["locked_total"]
         totals["price_locked"] = True
@@ -205,27 +214,31 @@ async def complete_session(cid: str, request: Request):
     body = await request.json()
     s["attempts"] += 1
     amount = s.get("quoted") or _totals(s["unit"], s["qty"], s["tax_rate"])["total"]
-    fault = SHOP.fault(jid)
 
     def fail(status, payload, line):
         SHOP.note(jid, f"POST /acp/checkout_sessions/{cid}/complete → {status} {line}")
         return JSONResponse(payload, status)
 
-    if fault == "otp_wall":
+    instrument = body.get("instrument") or {}
+    if SHOP.has(jid, "unsupported_payment") and instrument.get("type") == "upi_reserve":
+        return fail(400, {"error": "payment_method_unsupported",
+                          "detail": "this store does not accept UPI Reserve mandates"},
+                    "payment_method_unsupported")
+    if SHOP.has(jid, "otp_wall"):
         token = body.get("approval_token")
         if not token or SHOP.approvals.get(token) != cid:
             return fail(401, {"error": "authentication_required",
                               "detail": "OTP must be completed by the account holder"},
                         "authentication_required")
         SHOP.approvals.pop(token, None)                    # single use
-    if fault == "flaky_error":
-        SHOP.resolve(jid)                                  # it was transient
+    if SHOP.has(jid, "flaky_error"):
+        SHOP.resolve(jid, "flaky_error")                   # it was transient
         return fail(503, {"error": "processing_error",
                           "detail": "request could not be completed"}, "processing_error")
-    forced = "insufficient_funds" if fault == "insufficient_funds" else None
+    forced = "insufficient_funds" if SHOP.has(jid, "insufficient_funds") else None
     try:
-        result = _payments.charge(amount, body.get("instrument") or {}, forced_reason=forced)
-        if fault == "silent_decline":
+        result = _payments.charge(amount, instrument, forced_reason=forced)
+        if SHOP.has(jid, "silent_decline"):
             # Roughly a quarter of real declines arrive like this: no reason at all.
             result.ok, result.reason_code = False, ""
     except PaymentError as exc:
@@ -293,8 +306,13 @@ def _apply(directive):
         SHOP.approvals[a["approval_token"]] = a["checkout_id"]
         return f"armed a single-use approval for {a['checkout_id']}"
     if kind in ("schedule_retry", "offer_alternate_instrument"):
-        SHOP.resolve(jid)
+        SHOP.resolve(jid, "insufficient_funds", "silent_decline")
         return "payment retry armed"
+    if kind == "approved_offer":
+        if a.get("action") == "retry":
+            SHOP.resolve(jid)                  # the merchant fixed what broke
+        change = a.get("merchant_change") or ""
+        return f"approved {a.get('action')}" + (f" · noted: {change[:80]}" if change else "")
     if kind == "none":
         return "nothing to change on the shop side"
     return f"logged {kind or 'event'}"
