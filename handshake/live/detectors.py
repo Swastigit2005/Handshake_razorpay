@@ -455,18 +455,26 @@ def detect_offer_mismatch(tr, ctx):
     sku = current_sku(tr)
     views = [e for e in tr.of("product.view") if (e.get("sku") or e["request"].get("sku")) == sku
              and e["http_status"] == 200]
-    if not sku or not views:
+    feeds = tr.of("feed.read")
+    listed = [(e, p) for e in feeds for p in (e["response"].get("items") or [])
+              if p.get("sku") == sku]
+    if not sku or not (views or listed):
         return []
-    served = views[-1]["response"]
+    # An agent may compare offers straight from search results without opening
+    # the product page; what the listing served is then the record it judged.
+    if views:
+        view_ev, served = views[-1], views[-1]["response"]
+    else:
+        view_ev, served = listed[-1]
     created = tr.created
     served_ful = (created["response"].get("fulfilment") if created else None) or None
     mine = facets(served, served_ful)
     if not mine:
         return []
 
-    feeds = tr.of("feed.read")
-    shown = [p for p in ((feeds[-1]["response"].get("items") if feeds else None) or [])
-             if p.get("sku") != sku]
+    shown = {p.get("sku"): p for e in feeds for p in (e["response"].get("items") or [])
+             if p.get("sku") != sku}
+    shown = list(shown.values())
     pool = shown or [p for p in ctx["all_products"]()
                      if p.get("category") == served.get("category") and p.get("sku") != sku]
     peers = []
@@ -492,7 +500,7 @@ def detect_offer_mismatch(tr, ctx):
         return []
     facet, value, (top_sku, top), gap = best
     score = min(NOVEL_CAP, 0.5 + 0.16 * gap)
-    where = views[-1] if facet != "ships_in_days" or not created else created
+    where = view_ev if facet != "ships_in_days" or not created else created
     nice = facet.replace("_", " ")
     return [Hypothesis(
         "N2", score,
@@ -520,6 +528,37 @@ def _declared(tr):
         if reason:
             return ev, reason.lower()
     return None, ""
+
+
+# Words that, in an agent's free-text reason, point at a hypothesis's subject.
+# Used only to corroborate a hypothesis the traffic already supports.
+_TEXT_HINTS = {
+    "A1": ("missing", "not listed", "doesn't list", "does not list", "no spec", "unverif",
+           "can't verify", "cannot verify"),
+    "A2": ("identical", "duplicate", "two listings", "ambiguous"),
+    "A3": ("price changed", "price went up", "price increased", "re-quote", "requote",
+           "more expensive", "price rose"),
+    "A4": ("cap", "budget", "limit", "over my", "too expensive"),
+    "A5": ("otp", "authenticat", "approval", "verification code"),
+    "A6": ("error", "failed", "503", "server"),
+    "A7": ("return", "warranty terms", "policy"),
+    "A8": ("deliver to", "pincode", "serviceable", "can't deliver", "cannot deliver"),
+    "N1": ("not accept", "doesn't accept", "does not accept", "unsupported", "refused",
+           "out of stock", "sold out", "unavailable"),
+}
+_FACET_HINTS = {"ships_in_days": ("ship", "deliver", "arriv", "days"),
+                "warranty_months": ("warranty",), "returns_days": ("return",),
+                "battery_hours": ("battery",), "capacity_l": ("capacity", "litre", "liter"),
+                "power_watts": ("watt", "power")}
+
+
+def _text_supports(text, h):
+    text = text.lower()
+    if h.cause == "N2":
+        words = _FACET_HINTS.get(h.detail.get("facet"), (h.detail.get("facet", "").split("_")[0],))
+    else:
+        words = _TEXT_HINTS.get(h.cause, ())
+    return any(w in text for w in words)
 
 
 ANALYST_BELOW = 0.70
@@ -583,7 +622,19 @@ def diagnose(events, schema, catalog_lookup, all_products=lambda: [], analyst=No
             hyps.append(h)
             declared["corroborated"] = False
         else:
-            ctx["observations"].append(f"Agent stated '{said}', which maps to no known cause.")
+            # Free text. It may corroborate what the traffic already shows — never
+            # create a hypothesis by itself.
+            agrees = next((h for h in hyps if _text_supports(said, h)), None)
+            if agrees:
+                agrees.score = min(NOVEL_CAP if agrees.cause.startswith("N") else 0.99,
+                                   agrees.score + 0.06)
+                agrees.corroborated_by_agent = True
+                agrees.evidence.append(_ev(cancel_ev, "agent's stated reason agrees",
+                                           observed=said))
+                declared.update(maps_to=agrees.cause, corroborated=True)
+            else:
+                ctx["observations"].append(f"Agent stated '{said}', which nothing in the "
+                                           "traffic confirms.")
 
     method = "evidence-v2"
     if analyst is not None and (not hyps or max(h.score for h in hyps) < ANALYST_BELOW):

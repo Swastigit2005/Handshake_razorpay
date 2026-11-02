@@ -231,7 +231,7 @@ def ingest(body: EventBatch, merchant=Depends(merchant_auth)):
         result = pipeline.ingest(merchant, body.events)
     except InvalidEvent as exc:
         raise APIError(422, "invalid_request", str(exc))
-    if body.events and not result["accepted"] and not result["duplicates"]:
+    if body.events and not (result["accepted"] or result["duplicates"] or result["ignored"]):
         return JSONResponse({"error": {"type": "invalid_events",
                                        "message": "no event in the batch was valid"},
                              **result}, status_code=422)

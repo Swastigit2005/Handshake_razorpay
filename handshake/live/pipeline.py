@@ -119,7 +119,7 @@ def ingest(merchant, raw_events):
         raise InvalidEvent(f"at most {MAX_BATCH} events per request")
     mid = merchant["merchant_id"]
     settings = settings_for(merchant)
-    accepted, duplicates, rejected, touched = 0, 0, [], []
+    accepted, duplicates, ignored, rejected, touched = 0, 0, 0, [], []
     for i, raw in enumerate(raw_events):
         try:
             ev = normalise(raw)
@@ -130,6 +130,11 @@ def ingest(merchant, raw_events):
             duplicates += 1
             continue
         jid = _resolve_journey(merchant, ev, settings)
+        if ev["type"] == "reoffer.fetch" and store.get_journey(mid, jid) is None:
+            # Polling for an offer never starts a journey: with no shopping
+            # behind it there is nothing to diagnose, only noise to mis-file.
+            ignored += 1
+            continue
         j = store.get_journey(mid, jid) or store.create_journey(
             mid, jid, ev["agent_id"], ev["principal_id"], ev["ts"])
         ev["journey_id"] = jid
@@ -139,8 +144,8 @@ def ingest(merchant, raw_events):
         accepted += 1
         touched.append(jid)
         _apply(merchant, j, ev)
-    return {"accepted": accepted, "duplicates": duplicates, "rejected": rejected,
-            "journeys": sorted(set(touched))}
+    return {"accepted": accepted, "duplicates": duplicates, "ignored": ignored,
+            "rejected": rejected, "journeys": sorted(set(touched))}
 
 
 def _has_shopped(merchant, jid):

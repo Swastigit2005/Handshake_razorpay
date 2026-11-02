@@ -855,3 +855,42 @@ def test_store_admin_settings_are_the_stores_real_state(demo):
     assert "battery_hours" in call("GET", "/acp/products/IEM-010")["attributes"]
     call("PUT", "/admin/api/config", {"global": [], "products": {}})
     assert "battery_hours" in call("GET", "/acp/products/HPH-045")["attributes"]
+
+
+def test_claudes_live_trace_slow_delivery_from_search_results():
+    # Replayed from the live run: search → checkout (ships in 9) → cancel with a
+    # free-text reason. No product page was ever opened.
+    al1 = {"sku": "LST-AL1", "category": "laptop_accessories", "price": 1790.0, "tax_rate": 0.18,
+           "attributes": {"compatibility": '11"-16" laptops', "weight_g": 690},
+           "policy": {"returns_days": 10, "warranty_months": 12}, "fulfilment": {"ships_in_days": 2}}
+    fd2 = {**al1, "sku": "LST-FD2", "price": 2290.0}
+    cat = {"LST-AL1": al1, "LST-FD2": fd2}
+    listed = [{k: v for k, v in p.items() if k != "fulfilment"} for p in (al1, fd2)]
+    events = [ev(1, "feed.read", response={"items": listed[:1]}),
+              ev(2, "feed.read", response={"items": listed}),
+              ev(3, "checkout.create", request={"sku": "LST-AL1", "declared_cap": 3000},
+                 response={"session_id": "cs_1", "total": 2112.2, "fulfilment": {"ships_in_days": 9}},
+                 sku="LST-AL1"),
+              ev(4, "checkout.cancel", request={"reason": "Ships in 9 days; buyer needs delivery "
+                                                          "within 4 days (travelling)."})]
+    d = diagnose(events, {"laptop_accessories": ["compatibility", "material", "weight_g"]},
+                 cat.get, lambda: list(cat.values()))
+    assert d["cause"] == "N2" and d["detail"]["facet"] == "ships_in_days"
+    assert d["detail"]["best_alternative"] == "LST-FD2"
+    assert d["declared"]["corroborated"] is True and d["confidence"] <= 0.66   # still a person's call
+
+
+def test_free_text_never_creates_a_hypothesis_on_its_own():
+    events = checkout() + [ev(5, "checkout.cancel", request={"reason": "the price went up"})]
+    d = run(events)                     # nothing in the traffic shows a price change
+    assert d["cause"] == "UNKNOWN" and not (d["declared"] or {}).get("corroborated")
+
+
+def test_offer_polls_alone_never_open_a_journey(live):
+    _, h = merchant(live)
+    resp = live["tc"].post("/v1/events", headers=h, json={"events": [
+        {"type": "reoffer.fetch", "agent_id": "ag_x", "journey_id": "jr_after_purchase",
+         "http_status": 404}]})
+    r = resp.json()
+    assert resp.status_code == 200 and r["ignored"] == 1 and r["accepted"] == 0
+    assert live["tc"].get("/v1/journeys", headers=h).json()["journeys"] == []
