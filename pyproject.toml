@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "handshake"
-version = "1.0.0"
+version = "1.1.0"
 description = "Revenue recovery and readiness scanning for agent-driven checkout"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -32,6 +32,9 @@ handshake-scan = "handshake.readiness.run:main"
 
 [tool.setuptools.packages.find]
 include = ["handshake*"]
+
+[tool.setuptools.package-data]
+handshake = ["web/*.html", "web/*.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["handshake/tests"]

@@ -25,5 +25,12 @@ jobs:
         run: python -m handshake.experiments.run --sessions 120 --tag ci
       - name: a readiness scan must run end to end
         run: python -m handshake.readiness.run --sessions 120 --tag ci
+      - name: the Node SDK must talk to a running server
+        if: matrix.python == '3.12'
+        run: |
+          HS_NO_SEED=1 HS_DB=/tmp/ci.db python -m uvicorn handshake.server.app:app --port 8000 &
+          for i in $(seq 1 30); do curl -sf localhost:8000/healthz >/dev/null && break; sleep 1; done
+          KEY=$(curl -s localhost:8000/demo/api/sandbox | python -c "import json,sys;print(json.load(sys.stdin)['api_key'])")
+          node sdk/js/smoke.mjs http://127.0.0.1:8000 "$KEY"
       - name: no credentials in the tree
         run: python pre_push_check.py

@@ -28,3 +28,11 @@ services:
         value: "1"
       - key: HS_DB
         value: /tmp/handshake.db
+      # Live plane. The admin token creates real merchants over /v1/merchants;
+      # Render generates it once and shows it in the dashboard. The sandbox
+      # demo (/demo, the sandbox dashboard login) is on for a public demo URL;
+      # set HS_DEMO_SANDBOX=0 on any deployment that holds real merchants.
+      - key: HS_ADMIN_TOKEN
+        generateValue: true
+      - key: HS_DEMO_SANDBOX
+        value: "1"

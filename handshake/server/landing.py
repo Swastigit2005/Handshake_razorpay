@@ -344,9 +344,11 @@ footer .fl{display:flex;gap:20px;flex-wrap:wrap}
       <a href="#how">How it works</a>
       <a href="#results">Results</a>
       <a href="#prevention">Prevention</a>
+      <a href="/demo">Live demo</a>
+      <a href="/merchant">Merchant dashboard</a>
     </nav>
     <div class="sp"></div>
-    <a class="btn sm" href="/console">Open the console <span class="arw">&rarr;</span></a>
+    <a class="btn sm" href="/demo">Watch an agent shop <span class="arw">&rarr;</span></a>
   </div>
 </header>
 
@@ -360,11 +362,11 @@ footer .fl{display:flex;gap:20px;flex-wrap:wrap}
     dead API session: <b>no reason code, no contact channel, no one to follow up with.</b>
     Handshake recovers those checkouts, and proves what came back in rupees.</p>
     <div class="cta">
-      <a class="btn" href="/console">Open the live console <span class="arw">&rarr;</span></a>
-      <a class="btn sec" href="#problem">See how it works</a>
+      <a class="btn" href="/demo">Watch an agent shop, and stop <span class="arw">&rarr;</span></a>
+      <a class="btn sec" href="/console">Run the 200-session experiment</a>
     </div>
-    <p class="underline">No sign-up, no API key. The console runs a real 200-session
-    experiment in about twenty seconds.</p>
+    <p class="underline">No sign-up, no API key. The live demo sends a real agent through a
+    real store over HTTP; the experiment measures recovery against a randomised control.</p>
 
   </div>
   <div class="shotwrap">
@@ -637,7 +639,9 @@ footer .fl{display:flex;gap:20px;flex-wrap:wrap}
         Test mode only. Synthetic buyers, catalogue and mandates &mdash; no real personal data.</div>
     </div>
     <div class="fl">
-      <a href="/console">Console</a>
+      <a href="/demo">Live demo</a>
+      <a href="/merchant">Merchant dashboard</a>
+      <a href="/console">Simulation lab</a>
       <a href="/healthz">Health</a>
       <a href="/docs">API</a>
       <a href="https://github.com/Swastigit2005/Handshake_razorpay" target="_blank" rel="noopener">GitHub</a>

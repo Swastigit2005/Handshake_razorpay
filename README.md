@@ -20,6 +20,34 @@ Handshake is the layer for the other kind of buyer. It works in two directions:
   defect in refused basket value, then repair the top ones and re-run the
   identical buyers to measure the delta.
 
+## Two planes
+
+**The live plane** is what a real store plugs into. A merchant adds one line of
+middleware to its agent-facing checkout, and every agent journey streams to
+`/v1/events`. When a journey stops, Handshake works out why from the HTTP
+traffic alone, runs the eleven rules, and sends the store a signed webhook
+saying what to fix. It also serves the agent a re-offer, and attributes the
+rupees when the agent comes back and pays.
+
+- `/demo`: a real agent shops a real (fictional) store over HTTP. Pick one of
+  12 ways checkout can go wrong and watch the agent's reasoning, the store's
+  server log and Handshake's diagnosis side by side.
+- `/merchant`: the merchant dashboard. It shows journeys, the evidence for each
+  diagnosis, all 11 rules with pass or fail, exceptions, policy, webhooks and
+  the audit ledger.
+- `/shop`: the demo store. It is instrumented with the public SDK and nothing
+  else.
+
+**The simulation lab** (`/console`) is the original measurement harness: 500
+seeded sessions against a simulated merchant, randomised control, macro-F1
+against injected faults. It is where the numbers below come from.
+
+**How does Handshake know *why* an agent stopped?** Not from the 11 rules.
+Those decide whether acting is *allowed*. The *why* comes from a separate
+evidence engine that tests 13 causes against what the shop actually served.
+[docs/DIAGNOSIS.md](docs/DIAGNOSIS.md) explains it in a page.
+[docs/INTEGRATION.md](docs/INTEGRATION.md) is the guide for wiring a real store in.
+
 ---
 
 ## Run it
@@ -33,7 +61,9 @@ deterministic decision policy.
 ```bash
 pip install ".[console,dev]"
 ./run_ui.sh                                    # landing at http://127.0.0.1:8000
-                                               # console at http://127.0.0.1:8000/console
+                                               # live demo   /demo
+                                               # dashboard   /merchant
+                                               # simulation  /console
 ```
 
 **Docker**
@@ -234,7 +264,8 @@ they refuse no basket. Counting them would inflate the score dishonestly.
 
 Read this before the numbers above.
 
-1. **No agent today polls a re-offer endpoint.** We serve offers at
+1. **No agent today polls a re-offer endpoint.** The demo agent does, which is
+   why the live demo can show recoveries end to end. We serve offers at
    `/reoffers/{session_id}`. ACP has no re-offer primitive and neither does UAP.
    This is the deepest limitation in the system, and it is a protocol gap rather
    than a code gap.
@@ -253,8 +284,20 @@ Read this before the numbers above.
    below 1.0.
 6. **Prior success rates in the policy engine are priors**, published as such,
    until enough batches exist to replace them with measured rates.
-7. **Not production-ready.** No adapter for a real PIM or checkout stack; no
-   multi-tenancy; no monitoring or alerting; single-process runner.
+7. **Production shape, not production scale.** The live plane has
+   multi-tenant API keys (stored hashed), idempotent ingest, PII redaction at
+   both ends, signed webhooks with retry, per-merchant policy, a persisted
+   hash-chained ledger, and SDKs that never block checkout. Before real
+   traffic it still lacks the following. Storage is SQLite, and the SQL is
+   portable to Postgres but not ported. The rate limiter and the sweeper are
+   per process, so they run on one replica. The dashboard signs in with an API
+   key kept in the browser, not with SSO. Metrics are counters, with no
+   alerting. No real PIM adapter exists: repairs arrive as webhook directives
+   the merchant applies itself.
+8. **The live detectors are tested on the scenarios we wrote.** Every scenario
+   is diagnosed correctly, and the scenario label provably never reaches
+   Handshake. That shows the detectors match their signatures. It does not
+   show how often real agents produce clean signatures.
 
 What it is: a working prototype that proves a mechanism end to end against real
 payment infrastructure and a real model buyer, and quantifies the opportunity
@@ -350,6 +393,12 @@ you how many sessions the pool can actually cover.
 
 ```
 handshake/
+├── live/                  the live plane: /v1 API, ingest, detectors (the "why"),
+│                          directives, webhooks, sweeper, tenant-scoped store
+├── sdk/                   Python client + ASGI middleware + webhook verification
+├── demo_shop/             Kaveri Home & Tech: an SDK-instrumented store, an HTTP
+│                          shopping agent, 12 scenarios
+├── web/                   /demo and /merchant pages
 ├── taxonomy.py        failure classes, interventions, rule ids
 ├── config.py          adapter switches and every policy bound
 ├── merchant/          C1  catalogue, feed, checkout sessions, fault injector
@@ -364,7 +413,9 @@ handshake/
 ├── readiness/             audit, price and prove catalogue repairs
 ├── store/                 SQLite persistence
 ├── experiments/           batch runner, allocation, metrics, CLI
-└── tests/                 58 tests: every rule, the chain, the pool, the API
+└── tests/                 97 tests: every rule, every detector, the chain, the
+                           pool, both APIs, tenancy, and the demo end to end
+sdk/js/                    Node SDK (Express middleware) and its smoke test
 ```
 
 `DEMO.md` is the five-minute video script, beat by beat, with the exact clicks.

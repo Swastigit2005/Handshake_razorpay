@@ -22,8 +22,8 @@ import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Header
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, Header, Request
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -31,6 +31,9 @@ from .. import __version__
 from ..config import RunConfig
 from ..experiments.batch import Sink, run_batch
 from ..experiments.report import compute
+from ..live import api as live_api
+from ..live import pipeline as live_pipeline
+from ..live import store as live_store
 from ..readiness.scan import scan as run_scan
 from ..store import db, seed
 from ..taxonomy import CAUSES, RULES
@@ -53,7 +56,12 @@ async def lifespan(_app):
             SEED_REPORT = seed.seed()
         except Exception as exc:
             SEED_REPORT = {"skipped": f"{type(exc).__name__}: {exc}"}
+    # The live plane's sweeper and webhook sender. One per process; with several
+    # replicas, run it in exactly one (HS_LIVE_WORKER=0 on the others).
+    if os.environ.get("HS_LIVE_WORKER", "1").lower() not in ("0", "false", "no"):
+        live_pipeline.WORKER.start()
     yield
+    live_pipeline.WORKER.stop()
 
 
 app = FastAPI(title="Handshake", version=__version__,
@@ -72,6 +80,8 @@ else:
     # wheel and run from elsewhere, this path does not exist. Serve without the
     # brand assets instead, and say so in /healthz.
     ASSET_DIR = None
+
+live_api.install(app)
 
 DEMO_MODE = os.environ.get("HS_DEMO_MODE", "").lower() in ("1", "true", "yes")
 API_TOKEN = os.environ.get("HS_API_TOKEN", "")
@@ -362,6 +372,10 @@ def healthz():
         "store": store,
         "assets": bool(ASSET_DIR),
         "seed": SEED_REPORT,
+        "live": {"worker": live_pipeline.WORKER.alive,
+                 "worker_error": live_pipeline.WORKER.last_error,
+                 "global_kill_switch": live_pipeline.global_kill_switch(),
+                 "db": live_store.db_path()},
     }, status_code=200 if healthy else 503)
 
 
@@ -495,3 +509,89 @@ def index():
 def console():
     """The live operator console — the thing the landing page sends you to."""
     return PAGE
+
+
+# ------------------------------------------------- live demo and dashboard ---
+#
+# /shop      a separate demo merchant, instrumented only through the SDK
+# /demo      one agent, one scenario, three vantage points, live
+# /merchant  the merchant's dashboard over the /v1 API
+
+from ..demo_shop import runner as demo_runner           # noqa: E402
+from ..demo_shop.app import shop as demo_shop           # noqa: E402
+from ..demo_shop.scenarios import SCENARIOS             # noqa: E402
+
+app.mount("/shop", demo_shop)
+WEB_DIR = Path(__file__).resolve().parents[1] / "web"
+SANDBOX = os.environ.get("HS_DEMO_SANDBOX", "1").lower() not in ("0", "false", "no")
+
+
+def _self_url(request):
+    """Where this process can reach itself. The demo shop and agent call it over
+    real HTTP, so they need the bound port, not the public hostname."""
+    override = os.environ.get("HS_SELF_URL")
+    if override:
+        return override.rstrip("/")
+    server = request.scope.get("server") or ("127.0.0.1", int(os.environ.get("PORT", "8000")))
+    return f"http://127.0.0.1:{server[1]}"
+
+
+@app.get("/demo", response_class=HTMLResponse, include_in_schema=False)
+def demo_page():
+    return FileResponse(WEB_DIR / "demo.html")
+
+
+@app.get("/merchant", response_class=HTMLResponse, include_in_schema=False)
+def merchant_page():
+    return FileResponse(WEB_DIR / "merchant.html")
+
+
+@app.get("/web/{name}", include_in_schema=False)
+def web_asset(name: str):
+    path = (WEB_DIR / name).resolve()
+    if path.parent != WEB_DIR.resolve() or not path.is_file():
+        return JSONResponse({"error": "not found"}, 404)
+    return FileResponse(path)
+
+
+class DemoRun(BaseModel):
+    scenario: str
+    pace: float = 0.35
+
+
+@app.get("/demo/api/scenarios", include_in_schema=False)
+def demo_scenarios():
+    return {"scenarios": [{"id": k, **{f: v[f] for f in ("title", "story", "family", "expect")}}
+                          for k, v in SCENARIOS.items()]}
+
+
+@app.post("/demo/api/runs", include_in_schema=False)
+def demo_start(body: DemoRun, request: Request):
+    if not SANDBOX:
+        return JSONResponse({"error": "the sandbox demo is disabled (HS_DEMO_SANDBOX=0)"}, 403)
+    if body.scenario not in SCENARIOS:
+        return JSONResponse({"error": f"unknown scenario {body.scenario!r}"}, 404)
+    if sum(1 for r in demo_runner.RUNS.values() if r["status"] == "running") >= 4:
+        return JSONResponse({"error": "four demo agents are already shopping; try again"}, 429)
+    demo_runner.bootstrap(_self_url(request))
+    run = demo_runner.start(body.scenario, pace=max(0.0, min(body.pace, 2.0)))
+    return {"run_id": run["run_id"], "journey_id": run["journey_id"],
+            "agent_id": run["agent_id"]}
+
+
+@app.get("/demo/api/runs/{run_id}", include_in_schema=False)
+def demo_view(run_id: str):
+    out = demo_runner.view(run_id)
+    if out is None:
+        return JSONResponse({"error": "unknown run"}, 404)
+    return out
+
+
+@app.get("/demo/api/sandbox", include_in_schema=False)
+def demo_sandbox(request: Request):
+    """The sandbox merchant's key, so the dashboard opens logged in. Sandbox
+    data only; disable with HS_DEMO_SANDBOX=0 on anything real."""
+    if not SANDBOX:
+        return JSONResponse({"error": "sandbox disabled"}, 403)
+    key = demo_runner.bootstrap(_self_url(request))
+    return {"api_key": key, "merchant_id": demo_runner.MERCHANT_ID}

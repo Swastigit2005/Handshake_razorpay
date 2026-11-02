@@ -209,3 +209,56 @@ required. The Razorpay backend refuses any key id that does not begin
 `rzp_test_`. The LLM backend accepts a pool of keys, rotates on a per-day quota,
 waits out a per-minute limit, and aborts the batch rather than finishing half on
 the heuristic.
+
+---
+
+## The live plane
+
+The components above run in-process against a simulated merchant, so the
+mechanism can be measured. The live plane runs the same diagnosis-then-gate
+design against a real store's traffic.
+
+```
+ AI agent ──HTTP──▶ merchant checkout ──(HandshakeMiddleware: bodies only, redacted)──┐
+                         ▲   ▲                                                       │
+       re-offer proxy ───┘   └── signed webhook: recovery.directive                  ▼
+                                                    ┌──────────── POST /v1/events ───────────┐
+                                                    │ normalise · redact · stitch journey    │
+                                                    │ idempotent on event_id                 │
+                                                    └──────────────┬─────────────────────────┘
+                              sweeper: idle window / cancel ───────▼
+                                                    detectors.diagnose   ← schema + catalogue
+                                                    (WHY: 13 causes, ranked, evidence)
+                                                                   ▼
+                                                    PolicyEngine.evaluate   (unchanged C5)
+                                                    (SHOULD: 11 rules, persisted buyer history)
+                                                                   ▼
+                                                    directives.build → re-offer + webhook
+                                                                   ▼
+                                       ledger (per merchant, hash-chained) · journeys · metrics
+```
+
+| Module | Role |
+|---|---|
+| `live/events.py` | Seven event types, validation, PII redaction by key name |
+| `live/detectors.py` | Nine detectors, three evidence tiers, contest margin, UNKNOWN |
+| `live/pipeline.py` | Journey state machine, gate invocation, attribution, sweeper/worker |
+| `live/directives.py` | Permit → `merchant_action` + `reoffer`, built from the synced catalogue |
+| `live/webhooks.py` | HMAC-SHA256 signatures, durable queue, eight-attempt backoff |
+| `live/store.py` | Tenant-scoped SQLite; every query filters on `merchant_id` |
+| `live/api.py` | `/v1`: auth, rate limit, ingest, catalogue, journeys, policy, ledger |
+| `sdk/` | Non-blocking client, ASGI middleware, webhook verification |
+
+**The gate is shared, not reimplemented.** `pipeline.gate` calls the same
+`PolicyEngine` the simulator uses, with buyer history loaded from the store,
+so R-02 and R-06 count across journeys and restarts.
+
+**A directive that can't be built truthfully is not sent.** If the gate
+permits I-01 but the catalogue doesn't hold the missing value, the pipeline
+tries the cause's next intervention, then routes the journey to a person with
+the reason stated. It never invents a value.
+
+**Journey states:** `open → converted`, or `open → abandoned → recovering →
+recovered | lost`, or `abandoned → exception | lost`. If an agent resumes
+after being called abandoned, the journey reopens and the earlier diagnosis
+stays in the ledger.

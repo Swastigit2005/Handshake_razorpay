@@ -36,6 +36,24 @@ the control tag, the rest of the screen explains itself.
 
 ---
 
+## The live demo, for "but how does it know *why*?"
+
+Use `/demo` when the audience asks how Handshake knows why an agent stopped.
+It is the most direct answer. Links that start a story by themselves:
+
+- `/demo?scenario=missing_attribute&autorun=1`: a spec is missing, Handshake finds it from the served record, and the shop patches its feed
+- `/demo?scenario=otp_wall&autorun=1`: the agent needs a human, and a single-use approval is relayed and consumed
+- `/demo?scenario=false_claim&autorun=1`: the agent lies about the reason, the traffic disagrees, and R-10 refuses
+
+Narrate the three columns from left to right. On the left is what the agent
+thought, which the shop never sees. In the middle is what the shop's server
+logged, which is all a real merchant has. On the right is how Handshake turned
+the middle column into a reason, and then put that reason through the eleven
+rules. Point at the two cards at the top of the page: *why* and *should* are
+answered by different parts of the system.
+
+---
+
 ## Before you record
 
 Record against the deployed URL, so a judge watches the same thing they can

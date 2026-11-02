@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Live demo · Handshake</title>
+<meta name="description" content="Watch a real AI shopping agent abandon a checkout, and see Handshake work out why from the HTTP traffic alone.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700&family=Inter:wght@400;500;600&display=swap">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23050505'/><path d='M11 9v14M11 9h4a3.5 3.5 0 0 1 0 7h-4' stroke='%231364F1' stroke-width='2.6' fill='none' stroke-linecap='round'/><path d='M21 23V9M21 23h-4a3.5 3.5 0 0 1 0-7h4' stroke='%2300BD6E' stroke-width='2.6' fill='none' stroke-linecap='round'/></svg>">
+<link rel="stylesheet" href="/web/hs.css">
+<style>
+.hero{padding:34px 0 8px}
+.hero .dek{font-size:17px;color:var(--tx2);max-width:68ch;margin:12px 0 0}
+
+/* the two questions */
+.twoq{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:stretch;margin:26px 0 8px}
+.q{background:#fff;border:1px solid var(--line);border-radius:var(--r12);padding:18px 20px}
+.q .n{font-family:var(--fm);font-size:12px;font-weight:600;color:var(--blue)}
+.q.rules .n{color:var(--green)}
+.q h3{font-size:18px;margin:4px 0 6px}
+.q p{margin:0;font-size:14px;color:var(--tx2)}
+.q ul{margin:10px 0 0;padding-left:18px;font-size:13.5px;color:var(--tx2)}
+.q li{margin:2px 0}
+.arrow{display:flex;align-items:center;color:var(--tx3);font-size:13px;text-align:center;
+  max-width:120px;flex-direction:column;justify-content:center;gap:6px}
+.arrow svg{flex:none}
+@media(max-width:900px){.twoq{grid-template-columns:1fr}.arrow{flex-direction:row;max-width:none}
+  .arrow svg{transform:rotate(90deg)}}
+
+/* scenario picker */
+.picker{margin-top:26px}
+.picker .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.sc{text-align:left;background:#fff;border:1px solid var(--line);border-radius:var(--r12);padding:12px 14px;
+  cursor:pointer;font:inherit;color:inherit;transition:border-color .15s,box-shadow .15s}
+.sc:hover{border-color:#C8D3E0}
+.sc[aria-pressed="true"]{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-100)}
+.sc .t{font-weight:600;font-size:14px;color:var(--ink);margin:6px 0 3px}
+.sc .s{font-size:12.5px;color:var(--tx2);line-height:1.45}
+
+/* stage */
+.stage{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1fr) minmax(0,1.25fr);gap:14px;
+  margin:22px 0 40px;align-items:start}
+@media(max-width:1100px){.stage{grid-template-columns:1fr}}
+.col .hd .who{display:flex;flex-direction:column;gap:1px}
+.col .hd small{font-size:12px;color:var(--tx3)}
+.col .bd{min-height:180px;max-height:640px;overflow:auto}
+#hs{max-height:none}
+.thought{padding:8px 11px;border-radius:10px;background:var(--bg2);font-size:13.5px;margin-bottom:7px}
+.thought.goal{background:var(--blue-50)}
+.thought.stop{background:var(--red-50);color:#7C1D15}
+.thought.ok{background:var(--green-50)}
+.thought.done{background:var(--green-50);color:#035C35;font-weight:600}
+.thought.offer{background:var(--violet-50);color:#3D1F86}
+.thought.scheme{background:var(--amber-50);color:#7A3304;font-style:italic}
+.thought.wait,.thought.relay{color:var(--tx2)}
+.logline{font-family:var(--fm);font-size:12px;padding:5px 8px;border-bottom:1px dashed var(--line2);
+  word-break:break-word}
+.logline.webhook{background:var(--violet-50);color:#3D1F86;border-radius:6px;border:none;margin:3px 0}
+.logline .s4{color:var(--red)} .logline .s2{color:var(--green)}
+
+.steps{display:grid;gap:12px}
+.step{border-left:2px solid var(--line);padding:0 0 0 14px;position:relative}
+.step::before{content:"";position:absolute;left:-6px;top:3px;width:10px;height:10px;border-radius:50%;
+  background:#fff;border:2px solid var(--line)}
+.step.on{border-color:var(--blue)} .step.on::before{border-color:var(--blue);background:var(--blue)}
+.step.good::before{border-color:var(--green);background:var(--green)}
+.step.bad::before{border-color:var(--red);background:var(--red)}
+.step .lbl{font-size:12px;font-weight:600;letter-spacing:.03em;text-transform:uppercase;color:var(--tx3)}
+.step.on .lbl{color:var(--blue)}
+.step .body{margin-top:5px;font-size:13.5px}
+.cause{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.cause b{font-family:var(--fm);font-size:15px;color:var(--ink)}
+.explain{margin:6px 0 8px;font-size:14px;color:var(--tx)}
+.ev{font-size:12.5px;background:var(--bg2);border-radius:8px;padding:7px 9px;margin:4px 0}
+.ev .k{font-family:var(--fm);color:var(--tx3);font-size:11.5px}
+.hyp{display:grid;grid-template-columns:34px 1fr 40px;gap:8px;align-items:center;font-size:12.5px;margin:4px 0}
+.hyp .c{font-family:var(--fm);font-weight:600}
+.money{font-family:var(--fd);font-size:28px;font-weight:700;letter-spacing:-.03em}
+.money.g{color:var(--green)} .money.r{color:var(--red)}
+.reveal{border-radius:var(--r12);padding:14px 16px;margin-top:4px;font-size:14px}
+.reveal.ok{background:var(--green-50);color:#035C35}
+.reveal.no{background:var(--red-50);color:#7C1D15}
+.private{font-size:11px;font-weight:600;color:var(--amber);background:var(--amber-50);
+  padding:2px 7px;border-radius:999px;white-space:nowrap}
+.foot{font-size:13px;color:var(--tx3);padding:0 0 40px}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="shell">
+  <a class="mark" href="/"><svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#050505"/><path d="M11 9v14M11 9h4a3.5 3.5 0 0 1 0 7h-4" stroke="#4287FF" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M21 23V9M21 23h-4a3.5 3.5 0 0 1 0-7h4" stroke="#00BD6E" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>Handshake</a>
+  <div class="navlinks">
+    <a href="/">Overview</a><a class="on" href="/demo">Live demo</a><a href="/merchant">Merchant dashboard</a>
+    <a href="/shop/">Demo store</a><a href="/console">Simulation lab</a><a href="/docs">API</a>
+  </div>
+  <div class="sp"></div><span class="tmode">Sandbox · test mode · no real money</span>
+</div></nav>
+
+<main class="shell">
+<section class="hero">
+  <h1>Why did the AI shopper stop?</h1>
+  <p class="dek">A person who abandons a cart leaves no reason. An AI agent doesn't say why either, but it
+  leaves something a person never does: a complete record of every request it made and every answer it got.
+  Pick a way for checkout to go wrong, and a real agent will shop a real (fictional) store over HTTP while you
+  watch all three sides.</p>
+
+  <div class="twoq">
+    <div class="q">
+      <div class="n">QUESTION 1 · DIAGNOSIS</div>
+      <h3>Why did it stop?</h3>
+      <p>The evidence engine. It reads only what the shop's server saw, plus the shop's own catalogue,
+      and tests 13 possible causes against it.</p>
+      <ul><li>An explicit reason on the response, like <code>402 insufficient_funds</code>, is trusted first</li>
+      <li>Then behaviour: <em>where</em> it stopped, measured against what it was served</li>
+      <li>What the agent <em>says</em> only counts if the traffic agrees</li>
+      <li>No evidence: answer is <b>UNKNOWN</b>, never a guess</li></ul>
+    </div>
+    <div class="arrow">
+      <svg width="34" height="18" viewBox="0 0 34 18"><path d="M1 9h30m-7-7 7 7-7 7" stroke="currentColor" stroke-width="1.6" fill="none"/></svg>
+      a cause and a confidence
+    </div>
+    <div class="q rules">
+      <div class="n">QUESTION 2 · THE 11 RULES</div>
+      <h3>Should we do anything?</h3>
+      <p>The policy gate. It doesn't work out <em>why</em>; it decides whether acting is
+      <em>allowed</em>. It's a fixed checklist with no AI in it.</p>
+      <ul><li>Is the diagnosis confident enough? (R-10)</li>
+      <li>Have we already tried too often, or given away too much margin? (R-01, R-02, R-04)</li>
+      <li>Is it worth more than it costs? Does it need a human's consent? (R-05, R-07, R-09)</li>
+      <li>Has an operator pulled the kill switch? (R-11)</li></ul>
+    </div>
+  </div>
+</section>
+
+<section class="picker">
+  <div class="row">
+    <h2>1. Choose what goes wrong</h2>
+    <div class="sp"></div>
+    <label>Speed <select id="pace"><option value="0.45">Narrate</option><option value="0.15">Brisk</option><option value="0">Instant</option></select></label>
+    <button class="btn" id="go" disabled>Send the agent shopping</button>
+  </div>
+  <div class="grid" id="grid"><div class="empty">Loading scenarios…</div></div>
+</section>
+
+<section>
+  <div class="row" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:30px">
+    <h2>2. Watch from three sides</h2>
+    <span class="muted" id="runmeta"></span>
+  </div>
+  <div class="stage">
+    <div class="card col">
+      <div class="hd"><div class="who"><h3>The AI shopper</h3><small>its own reasoning</small></div><div class="sp"></div><span class="private">private · never sent</span></div>
+      <div class="bd" id="agent"><div class="empty">Pick a scenario and send the agent shopping.</div></div>
+    </div>
+    <div class="card col">
+      <div class="hd"><div class="who"><h3>The shop's server</h3><small>Kaveri Home &amp; Tech's own log</small></div></div>
+      <div class="bd" id="shop"><div class="empty">Requests appear here as the agent makes them.</div></div>
+    </div>
+    <div class="card col">
+      <div class="hd"><div class="who"><h3>Handshake</h3><small>what the merchant is told</small></div><div class="sp"></div><a class="btn sec sm" id="openj" href="/merchant" hidden>Open in dashboard</a></div>
+      <div class="bd" id="hs"><div class="empty">Handshake sees only the HTTP traffic in the middle column.</div></div>
+    </div>
+  </div>
+</section>
+<p class="foot">The agent's column is shown so you can check Handshake's answer against the truth. Handshake never
+receives it, and never receives the scenario name: the store is instrumented with the public SDK, which forwards
+request and response bodies and nothing else. Re-offers work because this demo agent polls for them; no agent
+platform does that today.</p>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const inr = v => "₹" + Number(v || 0).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+const FAM = {catalogue: "blue", checkout: "violet", payment: "amber", trust: "red", control: "green"};
+let chosen = null, timer = null, runId = null;
+
+async function j(url, opts) {
+  const r = await fetch(url, opts);
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error?.message || body.error || r.status);
+  return body;
+}
+
+async function loadScenarios() {
+  const {scenarios} = await j("/demo/api/scenarios");
+  $("#grid").innerHTML = scenarios.map(s => `
+    <button class="sc" aria-pressed="false" data-id="${esc(s.id)}">
+      <span class="chip ${FAM[s.family] || ""}">${esc(s.family)}</span>
+      <div class="t">${esc(s.title)}</div><div class="s">${esc(s.story)}</div>
+    </button>`).join("");
+  document.querySelectorAll(".sc").forEach(b => b.onclick = () => {
+    document.querySelectorAll(".sc").forEach(x => x.setAttribute("aria-pressed", "false"));
+    b.setAttribute("aria-pressed", "true");
+    chosen = b.dataset.id;
+    $("#go").disabled = false;
+  });
+  // ?scenario=otp_wall&autorun=1 — a link that starts a specific story, for presenting.
+  const qs = new URLSearchParams(location.search);
+  const pre = document.querySelector(`.sc[data-id="${CSS.escape(qs.get("scenario") || "missing_attribute")}"]`);
+  if (pre) pre.click();
+  if (qs.get("pace")) $("#pace").value = qs.get("pace");
+  if (pre && qs.get("autorun")) $("#go").click();
+  if (qs.get("run")) { runId = qs.get("run"); timer = setInterval(poll, 450); poll(); }
+}
+
+$("#go").onclick = async () => {
+  if (!chosen) return;
+  $("#go").disabled = true;
+  $("#agent").innerHTML = $("#shop").innerHTML = "";
+  $("#hs").innerHTML = `<div class="empty">Watching the traffic…</div>`;
+  $("#openj").hidden = true;
+  try {
+    const r = await j("/demo/api/runs", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({scenario: chosen, pace: Number($("#pace").value)})});
+    runId = r.run_id;
+    $("#runmeta").textContent = `agent ${r.agent_id} · journey ${r.journey_id}`;
+    clearInterval(timer);
+    timer = setInterval(poll, 450);
+    poll();
+  } catch (e) {
+    $("#hs").innerHTML = `<div class="empty">Could not start: ${esc(e.message)}</div>`;
+    $("#go").disabled = false;
+  }
+};
+
+let settled = 0;
+async function poll() {
+  if (!runId) return;
+  let v;
+  try { v = await j(`/demo/api/runs/${runId}`); } catch (e) { return; }
+  renderAgent(v.thoughts);
+  renderShop(v.shop_log);
+  renderHandshake(v);
+  const st = v.journey?.status;
+  const final = v.status === "done" && st && !["open", "abandoned"].includes(st);
+  if (final || (v.status === "done" && !v.journey)) {
+    if (++settled > 4) { clearInterval(timer); timer = null; settled = 0; $("#go").disabled = false; }
+  }
+}
+
+function keepBottom(el, html) {
+  const atEnd = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  if (el.dataset.n === String(html.length)) return;
+  el.dataset.n = String(html.length);
+  el.innerHTML = html;
+  if (atEnd) el.scrollTop = el.scrollHeight;
+}
+
+function renderAgent(ts) {
+  keepBottom($("#agent"), ts.map(t => `<div class="thought ${esc(t.kind)} fade">${esc(t.text)}</div>`).join("")
+    || `<div class="empty">Starting…</div>`);
+}
+
+function renderShop(lines) {
+  keepBottom($("#shop"), lines.map(l => {
+    const txt = esc(l.line).replace(/→ (\d{3})/, (m, c) => `→ <span class="s${c[0]}">${c}</span>`);
+    return `<div class="logline ${l.kind === "webhook" ? "webhook" : ""} fade">${txt}</div>`;
+  }).join("") || `<div class="empty">No requests yet.</div>`);
+}
+
+function step(label, cls, body) {
+  return `<div class="step ${cls}"><div class="lbl">${label}</div><div class="body">${body}</div></div>`;
+}
+
+function renderHandshake(v) {
+  const jn = v.journey;
+  const meta = v.scenario_meta;
+  if (!jn) { $("#hs").innerHTML = `<div class="empty">Waiting for the first request to reach Handshake…</div>`; return; }
+  const dg = jn.diagnosis || {}, vd = jn.verdict || {}, dir = jn.directive || {};
+  const out = [];
+  const n = jn.events.filter(e => e.type !== "reoffer.fetch").length;
+  out.push(step("Watching", jn.status === "open" ? "on" : "good",
+    `${n} request${n === 1 ? "" : "s"} received through the SDK. Stage reached: <b>${esc(jn.stage)}</b>.` +
+    (jn.status === "open" ? ` <span class="muted">If the agent goes quiet for 4 s, Handshake calls it abandoned.</span>` : "")));
+
+  if (jn.status === "converted") {
+    out.push(step("Outcome", "good", `<div class="money g">${inr(jn.basket_value)}</div>Bought first time. Nothing to diagnose, and Handshake stays out of the way.`));
+  }
+  if (dg.cause) {
+    out.push(step("Abandoned", "good", jn.close_reason === "agent_cancelled"
+      ? "The agent cancelled its checkout session." : "The agent went silent past the idle window."));
+    const hyps = (dg.hypotheses || []).map(h => `
+      <div class="hyp"><span class="c">${esc(h.cause)}</span>
+      <div class="bar ${h.score < 0.7 ? "low" : ""}"><i style="width:${Math.round(h.score * 100)}%"></i></div>
+      <span class="mono">${h.score.toFixed(2)}</span></div>`).join("");
+    const ev = (dg.evidence || []).map(e => `<div class="ev"><span class="k">event ${e.event} · ${esc(e.type)}</span><br>${esc(e.what)}` +
+      (e.observed !== undefined ? ` <span class="muted">· saw</span> <code>${esc(JSON.stringify(e.observed))}</code>` : "") +
+      (e.expected !== undefined ? ` <span class="muted">· needed</span> <code>${esc(typeof e.expected === "string" ? e.expected : JSON.stringify(e.expected))}</code>` : "") + `</div>`).join("");
+    const obs = (dg.observations || []).map(o => `<div class="muted" style="font-size:12.5px;margin-top:4px">${esc(o)}</div>`).join("");
+    out.push(step("Question 1 · Why did it stop?", "on", `
+      <div class="cause"><b>${esc(dg.cause)}</b><span>${esc((dg.name || "").replace(/_/g, " "))}</span>
+      <span class="chip ${dg.confidence >= 0.7 ? "blue" : "amber"}">confidence ${Number(dg.confidence).toFixed(2)}</span>
+      ${dg.contested ? `<span class="chip amber">contested</span>` : ""}</div>
+      <p class="explain">${esc(dg.explanation)}</p>${ev}
+      ${hyps ? `<div class="eyebrow" style="margin-top:10px">Every cause the evidence supports</div>${hyps}` : ""}${obs}`));
+  }
+  if (vd.checklist) {
+    const rows = vd.checklist.map(r => `<div class="rule ${esc(r.result)}"><span class="id">${esc(r.rule)}</span>
+      <span>${esc(r.text)}</span><span class="st">${r.result === "not_reached" ? "not needed" : esc(r.state)}</span></div>`).join("");
+    out.push(step("Question 2 · Should we act? The 11 rules", vd.permitted ? "good" : "bad",
+      `<p style="margin:0 0 8px">${vd.permitted
+        ? `<b>Permitted.</b> Every rule that applies passed.`
+        : `<b>Refused by ${esc(vd.binding_rule)}.</b> ${esc(vd.reason)}.`}</p><div class="rules">${rows}</div>`));
+  }
+  if (dir.intervention) {
+    const a = dir.merchant_action || {}, ro = dir.reoffer || {};
+    out.push(step("Action", "good", `<b>${esc(dir.intervention)} · ${esc(dir.name.replace(/_/g, " "))}</b>
+      <div class="ev"><span class="k">to the shop, signed webhook</span><br>${esc(a.type)} <code>${esc(JSON.stringify(Object.fromEntries(Object.entries(a).filter(([k]) => !["type", "approval_token"].includes(k)))))}</code></div>
+      ${ro.message ? `<div class="ev"><span class="k">to the agent, when it asks</span><br>${esc(ro.message)}</div>` : ""}
+      ${dir.concession ? `<div class="muted">Margin given up: ${inr(dir.concession)}</div>` : ""}`));
+  }
+  if (["recovered", "exception", "lost", "recovering"].includes(jn.status)) {
+    const body = jn.status === "recovered"
+      ? `<div class="money g">${inr(jn.recovered_value)}</div>recovered. The same agent came back and paid.`
+      : jn.status === "recovering" ? `Re-offer waiting for the agent…`
+      : jn.status === "exception" ? `<div class="money r">${inr(jn.basket_value)}</div>not recovered. Sent to a person in the exceptions queue, with the evidence attached. Nothing was spent.`
+      : `<div class="money r">${inr(jn.basket_value)}</div>lost.`;
+    out.push(step("Outcome", jn.status === "recovered" ? "good" : jn.status === "recovering" ? "on" : "bad", body));
+  }
+  if (v.status === "done" && dg.cause !== undefined || jn.status === "converted") {
+    const expect = meta.expect, got = dg.cause || null;
+    const ok = expect === got;
+    out.push(`<div class="reveal ${ok ? "ok" : "no"} fade"><b>The hidden truth:</b> ${esc(meta.story)}<br>
+      ${expect ? `The shop's fault was <b>${esc(expect)}</b>; Handshake said <b>${esc(got || "nothing")}</b> ${ok ? "✓" : "✗"}` : `No fault was injected. Handshake raised nothing ${ok ? "✓" : "✗"}`}
+      ${v.scenario === "false_claim" ? `<br>The agent's claim matches a real cause name, but nothing in the traffic supports it, so confidence stays at ${Number(dg.confidence).toFixed(2)} and R-10 refuses. Saying the right words doesn't get an agent a discount.` : ""}</div>`);
+  }
+  const el = $("#hs");
+  const html = out.join("");
+  if (el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; }
+  const link = $("#openj");
+  link.href = `/merchant#journey=${encodeURIComponent(jn.journey_id)}`;
+  link.hidden = false;
+}
+
+loadScenarios().catch(e => { $("#grid").innerHTML = `<div class="empty">Could not load scenarios: ${esc(e.message)}</div>`; });
+</script>
+</body>
+</html>
