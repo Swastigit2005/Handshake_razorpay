@@ -108,13 +108,17 @@ reads the file and does not ask you to configure anything.
 1. https://dashboard.render.com → **New** → **Blueprint**
 2. Connect the `handshake` repository → **Apply**
 
-Render then runs:
+Render creates two things: a PostgreSQL 16 database (`handshake-db`) and the web
+service, with `DATABASE_URL` wired from one to the other. Then it runs:
 
 ```
-build:  pip install ".[console]"
+build:  pip install ".[console,postgres]"
 start:  python -m uvicorn handshake.server.app:app --host 0.0.0.0 --port $PORT
-health: /healthz
+health: /readyz        (200 only when Postgres answers and the schema is migrated)
 ```
+
+Migrations apply themselves on the first connection, under an advisory lock,
+so two instances starting at once cannot both run them.
 
 First build takes three to five minutes. The URL is
 `https://handshake-console.onrender.com` (Render appends a suffix if the name is
@@ -127,14 +131,25 @@ The environment variables in `render.yaml` are deliberate:
 | `HS_PAYMENTS` | `sim` | no Razorpay keys on a public URL |
 | `HS_BUYERS` | `heuristic` | no LLM quota burned by strangers |
 | `HS_DEMO_MODE` | `1` | caps batch size and rate-limits `/api/run` |
-| `HS_DB` | `/tmp/handshake.db` | free instances have no persistent disk |
+| `DATABASE_URL` | from `handshake-db` | journeys, events, ledgers survive redeploys |
+| `HS_ADMIN_TOKEN` | generated | creates merchants over `POST /v1/merchants` |
+| `HS_DEMO_SANDBOX` | `1` | the `/demo` store and its auto-login; `0` where real merchants live |
+| `HS_TRUST_PROXY` | `1` | HTTPS is terminated by Render; send HSTS |
 | `PYTHON_VERSION` | `3.12.6` | pinned, so the build cannot drift |
 
 **Free-tier facts, so nothing surprises you on demo day.** The instance sleeps
-after 15 minutes idle and takes about a minute to wake. The filesystem is wiped
-on every deploy — which is why the app re-imports the committed canonical run at
-startup and re-verifies its chain, so a cold URL is never an empty console.
+after 15 minutes idle and takes about a minute to wake. Data is in Postgres, so
+it survives deploys and sleeps; the canonical run is imported once, on an empty
+database. **Render's free Postgres expires 30 days after creation** — move it to
+a paid plan before then, or export it (`pg_dump`) and recreate.
 750 instance-hours a month is more than one service can use.
+
+**Scaling.** Every part of the live plane is safe to run in several replicas
+against one database: journeys close through a conditional `UPDATE … RETURNING`,
+webhooks are claimed with `FOR UPDATE SKIP LOCKED`, and ledger appends take a
+per-merchant advisory lock. Two limits remain per process: the API rate limiter
+(enforce limits at the load balancer instead) and the `/demo` store, whose
+in-memory state means the demo itself should run on a single instance.
 
 If a reviewer will open the link unattended, point a free uptime pinger
 (uptimerobot.com) at `https://YOUR-URL/healthz` every 10 minutes so it is warm.
@@ -173,7 +188,7 @@ Then in a browser:
    the diagnosis, the policy verdict and the audit-chain entries for that session
 4. **Prevention** → *Scan catalogue* → the before/after proof and revenue delta
 5. Flip the **kill switch** mid-batch → R-11 refusals appear, the money stops
-6. **History** → open the stored run → the chain re-verifies out of SQLite
+6. **History** → open the stored run → the chain re-verifies out of the database
 
 If step 2 returns HTTP 409, a run is already in flight — that guard is intended.
 If it returns 429, `HS_DEMO_MODE` is rate-limiting; wait the stated gap.

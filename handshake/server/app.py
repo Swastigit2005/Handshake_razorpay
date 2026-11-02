@@ -28,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .. import __version__
+from .. import database
 from ..config import RunConfig
 from ..experiments.batch import Sink, run_batch
 from ..experiments.report import compute
@@ -38,7 +39,10 @@ from ..readiness.scan import scan as run_scan
 from ..store import db, seed
 from ..taxonomy import CAUSES, RULES
 from .landing import LANDING
+from .ops import RequestContext, configure_logging, cors_origins
 from .ui import PAGE
+
+configure_logging()
 
 SEED_REPORT = {}
 
@@ -56,12 +60,16 @@ async def lifespan(_app):
             SEED_REPORT = seed.seed()
         except Exception as exc:
             SEED_REPORT = {"skipped": f"{type(exc).__name__}: {exc}"}
-    # The live plane's sweeper and webhook sender. One per process; with several
-    # replicas, run it in exactly one (HS_LIVE_WORKER=0 on the others).
+    # The live plane's sweeper and webhook sender. Safe in every replica: each
+    # step claims its rows atomically. HS_LIVE_WORKER=0 runs an API-only process.
     if os.environ.get("HS_LIVE_WORKER", "1").lower() not in ("0", "false", "no"):
         live_pipeline.WORKER.start()
     yield
     live_pipeline.WORKER.stop()
+    client = demo_runner.STATE.get("client")
+    if client is not None:
+        client.close(timeout=5)
+    database.close_all()
 
 
 app = FastAPI(title="Handshake", version=__version__,
@@ -82,6 +90,12 @@ else:
     ASSET_DIR = None
 
 live_api.install(app)
+app.add_middleware(RequestContext)
+if cors_origins():
+    from fastapi.middleware.cors import CORSMiddleware
+    app.add_middleware(CORSMiddleware, allow_origins=cors_origins(),
+                       allow_methods=["GET", "POST", "PUT", "PATCH"],
+                       allow_headers=["Authorization", "Content-Type", "X-Request-Id"])
 
 DEMO_MODE = os.environ.get("HS_DEMO_MODE", "").lower() in ("1", "true", "yes")
 API_TOKEN = os.environ.get("HS_API_TOKEN", "")
@@ -375,8 +389,42 @@ def healthz():
         "live": {"worker": live_pipeline.WORKER.alive,
                  "worker_error": live_pipeline.WORKER.last_error,
                  "global_kill_switch": live_pipeline.global_kill_switch(),
-                 "db": live_store.db_path()},
+                 "db": database.describe()},
     }, status_code=200 if healthy else 503)
+
+
+@app.get("/readyz")
+def readyz():
+    """Readiness: the database answers and the schema is migrated. Point the load
+    balancer here; /healthz is liveness and reports more than it checks."""
+    try:
+        info = database.ping()
+    except Exception as exc:
+        return JSONResponse({"ready": False, "error": f"{type(exc).__name__}: {exc}"}, 503)
+    return {"ready": True, **info, "worker": live_pipeline.WORKER.alive}
+
+
+@app.get("/metrics", include_in_schema=False)
+def ops_metrics(authorization: str = Header(default="")):
+    """Prometheus text format. Needs HS_ADMIN_TOKEN when one is set."""
+    token = os.environ.get("HS_ADMIN_TOKEN", "")
+    if token and authorization != f"Bearer {token}":
+        return JSONResponse({"error": "admin token required"}, 401)
+    c = live_store.counts()
+    w = live_pipeline.WORKER
+    lines = ["# TYPE handshake_up gauge", "handshake_up 1",
+             "# TYPE handshake_worker_alive gauge", f"handshake_worker_alive {int(w.alive)}",
+             "# TYPE handshake_merchants gauge", f"handshake_merchants {c['merchants']}",
+             "# TYPE handshake_events gauge", f"handshake_events {c['events']}",
+             "# TYPE handshake_journeys gauge"]
+    lines += [f'handshake_journeys{{status="{k}"}} {v}' for k, v in sorted(c["journeys"].items())]
+    lines.append("# TYPE handshake_webhook_deliveries gauge")
+    lines += [f'handshake_webhook_deliveries{{status="{k}"}} {v}'
+              for k, v in sorted(c["deliveries"].items())]
+    lines.append("# TYPE handshake_worker_total counter")
+    lines += [f'handshake_worker_total{{event="{k}"}} {v}' for k, v in sorted(w.counters.items())]
+    from fastapi.responses import PlainTextResponse
+    return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain; version=0.0.4")
 
 
 @app.get("/api/state")

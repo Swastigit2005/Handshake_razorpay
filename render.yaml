@@ -13,9 +13,9 @@ services:
     runtime: python
     plan: free
     region: singapore
-    buildCommand: pip install ".[console]"
+    buildCommand: pip install ".[console,postgres]"
     startCommand: python -m uvicorn handshake.server.app:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /healthz
+    healthCheckPath: /readyz
     autoDeployTrigger: commit
     envVars:
       - key: PYTHON_VERSION
@@ -26,8 +26,13 @@ services:
         value: heuristic
       - key: HS_DEMO_MODE
         value: "1"
-      - key: HS_DB
-        value: /tmp/handshake.db
+      # Runs, journeys and ledgers live in Postgres and survive redeploys.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: handshake-db
+          property: connectionString
+      - key: HS_TRUST_PROXY
+        value: "1"
       # Live plane. The admin token creates real merchants over /v1/merchants;
       # Render generates it once and shows it in the dashboard. The sandbox
       # demo (/demo, the sandbox dashboard login) is on for a public demo URL;
@@ -36,3 +41,10 @@ services:
         generateValue: true
       - key: HS_DEMO_SANDBOX
         value: "1"
+
+databases:
+  - name: handshake-db
+    databaseName: handshake
+    plan: free
+    region: singapore
+    postgresMajorVersion: "16"

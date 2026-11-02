@@ -54,11 +54,10 @@ def emit(merchant, journey_id, event, data):
     skipped, so the dashboard shows what would have been sent."""
     payload = {"id": None, "type": event, "created": time.time(),
                "merchant_id": merchant["merchant_id"], "data": data}
-    delivery_id = store.enqueue_delivery(merchant["merchant_id"], journey_id, event, payload)
-    if not merchant.get("webhook_url"):
-        store.mark_delivery(delivery_id, status="skipped",
-                            last_error="no webhook_url configured")
-    return delivery_id
+    if merchant.get("webhook_url"):
+        return store.enqueue_delivery(merchant["merchant_id"], journey_id, event, payload)
+    return store.enqueue_delivery(merchant["merchant_id"], journey_id, event, payload,
+                                  status="skipped", last_error="no webhook_url configured")
 
 
 def deliver(row):
@@ -92,7 +91,7 @@ def deliver(row):
 
 def deliver_due(now=None, limit=25):
     sent = 0
-    for row in store.due_deliveries(now or time.time(), limit):
+    for row in store.claim_deliveries(now or time.time(), limit):
         if deliver(row):
             sent += 1
     return sent

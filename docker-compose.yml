@@ -1,20 +1,45 @@
+# The full stack: Handshake on PostgreSQL 16.
+#
+#   docker compose up --build        → http://127.0.0.1:8000
+#
+# Postgres data persists in the `pgdata` volume. The app waits for the database
+# to be healthy, applies migrations on first connection, and reports readiness
+# at /readyz once the schema is current.
 services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: handshake
+      POSTGRES_USER: handshake
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-handshake-local-only}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U handshake -d handshake"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
   console:
     build: .
     ports:
       - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
     environment:
+      DATABASE_URL: postgresql://handshake:${POSTGRES_PASSWORD:-handshake-local-only}@db:5432/handshake
       # Offline and reproducible by default. No API keys needed.
       HS_PAYMENTS: sim
       HS_BUYERS: heuristic
       HS_DEMO_MODE: 1
-      HS_DB: /app/data/handshake.db
+      HS_ADMIN_TOKEN: ${HS_ADMIN_TOKEN:-change-me-before-exposing-this}
+      HS_LOG_FORMAT: json
     env_file:
       - path: .env
         required: false
-    volumes:
-      - handshake-data:/app/data
     restart: unless-stopped
 
 volumes:
-  handshake-data:
+  pgdata:

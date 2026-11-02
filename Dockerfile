@@ -16,7 +16,7 @@ COPY pyproject.toml README.md ./
 COPY handshake ./handshake
 COPY assets ./assets
 
-RUN pip install --upgrade pip && pip install ".[console,live,dev]"
+RUN pip install --upgrade pip && pip install ".[console,live,postgres,dev]"
 
 RUN mkdir -p /app/runs /app/data && \
     useradd --create-home --uid 10001 handshake && \
@@ -26,7 +26,9 @@ USER handshake
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=4s --start-period=8s --retries=3 \
   CMD python -c "import urllib.request,os,sys; \
-url='http://127.0.0.1:'+os.environ.get('PORT','8000')+'/healthz'; \
+url='http://127.0.0.1:'+os.environ.get('PORT','8000')+'/readyz'; \
 sys.exit(0 if urllib.request.urlopen(url, timeout=3).status==200 else 1)"
 
-CMD ["sh", "-c", "python -m uvicorn handshake.server.app:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# One process per container; scale with replicas. --proxy-headers so client
+# addresses and HTTPS are right behind a load balancer.
+CMD ["sh", "-c", "python -m uvicorn handshake.server.app:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*' --timeout-graceful-shutdown 20"]

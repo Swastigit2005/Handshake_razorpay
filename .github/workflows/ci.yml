@@ -18,7 +18,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: install
-        run: pip install ".[console,dev]"
+        run: pip install ".[console,dev,postgres]"
       - name: tests
         run: python -m pytest handshake/tests -q
       - name: a batch must run end to end
@@ -34,3 +34,27 @@ jobs:
           node sdk/js/smoke.mjs http://127.0.0.1:8000 "$KEY"
       - name: no credentials in the tree
         run: python pre_push_check.py
+
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: handshake_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 2s
+          --health-timeout 3s --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install
+        run: pip install ".[console,dev,postgres]"
+      - name: every test, on PostgreSQL
+        env:
+          HS_TEST_DATABASE_URL: postgresql://postgres:ci@localhost:5432/handshake_test
+        run: python -m pytest handshake/tests -q

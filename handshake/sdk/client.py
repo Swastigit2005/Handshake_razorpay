@@ -123,6 +123,9 @@ class HandshakeClient:
                 self._inflight += len(batch)
             try:
                 self._send(batch)
+            except Exception as exc:          # a bad transport must not kill the sender
+                self.stats["failed"] += len(batch)
+                log.warning("handshake sender error, dropped %d events: %s", len(batch), exc)
             finally:
                 with self._lock:
                     self._inflight -= len(batch)

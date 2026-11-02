@@ -66,11 +66,23 @@ pip install ".[console,dev]"
                                                # simulation  /console
 ```
 
-**Docker**
+**Docker (Handshake + PostgreSQL 16)**
 
 ```bash
-docker compose up                              # landing at http://127.0.0.1:8000
+docker compose up --build                      # landing at http://127.0.0.1:8000
 ```
+
+**PostgreSQL without Docker**
+
+```bash
+pip install ".[console,postgres]"
+createdb handshake
+DATABASE_URL=postgresql:///handshake ./run_ui.sh
+```
+
+Without `DATABASE_URL` everything runs on a local SQLite file, so nothing needs
+installing to try it. The SQL is the same on both; the test suite runs on both
+(`HS_TEST_DATABASE_URL=postgresql:///handshake_test python -m pytest`).
 
 **Anything else**
 
@@ -111,7 +123,13 @@ what the store holds.
 |---|---|
 | `HS_DEMO_MODE=1` | caps batch size (400) and enforces a cooldown between runs |
 | `HS_API_TOKEN` | requires `X-Handshake-Token` on every write endpoint |
-| `HS_DB` | SQLite path — runs, sessions and ledgers survive a restart |
+| `DATABASE_URL` | PostgreSQL, for production: `postgresql://user:pass@host/db` |
+| `HS_DB` | SQLite path, used only when `DATABASE_URL` is unset |
+| `HS_ADMIN_TOKEN` | creates merchants over `/v1/merchants`; guards `/metrics` |
+| `HS_DEMO_SANDBOX=0` | disables the `/demo` store's auto-login, for real deployments |
+| `HS_DB_POOL_MAX` | PostgreSQL connections per process (default 10) |
+| `HS_EVENT_RETENTION_DAYS` | raw events kept for closed journeys (default 90) |
+| `HS_LOG_FORMAT=json` | one JSON line per request, with request id and merchant |
 | `HS_MAX_SESSIONS` | hard ceiling on batch size |
 | `HS_NO_SEED=1` | skip importing the canonical run on startup |
 
@@ -119,8 +137,9 @@ One run at a time is enforced regardless; a second request gets `409`.
 
 **Two things about free tiers, and what this repo does about them.**
 
-Free instances have an **ephemeral filesystem** — the SQLite file is lost on every
-redeploy and spin-down. So on startup the console imports the canonical run
+With PostgreSQL, everything survives redeploys. Without it, free instances have
+an **ephemeral filesystem** and the SQLite file is lost on every redeploy and
+spin-down. Either way, on an empty database the console imports the canonical run
 committed in `runs/`, and re-verifies its hash chain as it does. A visitor
 arriving at a cold URL sees the real figures immediately, and `/healthz` reports
 what was imported. Nothing is fabricated: it is the same artefact set the README
@@ -154,7 +173,7 @@ a demonstration, never a measurement.
 
 **Prevention** runs the readiness scan and shows the before/after proof.
 
-**History** lists stored runs from SQLite. Open one and the chain is re-verified
+**History** lists stored runs from the database. Open one and the chain is re-verified
 on read, independently of the process that wrote it.
 
 **Kill switch** is a live control in the header. Flip it during a batch and R-11
@@ -287,13 +306,17 @@ Read this before the numbers above.
 7. **Production shape, not production scale.** The live plane has
    multi-tenant API keys (stored hashed), idempotent ingest, PII redaction at
    both ends, signed webhooks with retry, per-merchant policy, a persisted
-   hash-chained ledger, and SDKs that never block checkout. Before real
-   traffic it still lacks the following. Storage is SQLite, and the SQL is
-   portable to Postgres but not ported. The rate limiter and the sweeper are
-   per process, so they run on one replica. The dashboard signs in with an API
-   key kept in the browser, not with SSO. Metrics are counters, with no
-   alerting. No real PIM adapter exists: repairs arrive as webhook directives
-   the merchant applies itself.
+   hash-chained ledger, and SDKs that never block checkout. It runs on
+   PostgreSQL with pooled connections and versioned migrations, and every
+   worker step is safe across replicas (conditional updates, `SKIP LOCKED`
+   claims, advisory locks), with readiness at `/readyz`, Prometheus counters at
+   `/metrics`, JSON request logs and security headers. Before real traffic it
+   still lacks the following. The API rate limiter is per process; enforce
+   limits at the load balancer. The dashboard signs in with an API key kept in
+   the browser, not with SSO or per-user roles. There is no alerting: the
+   metrics exist, the alert rules don't. No real PIM adapter exists: repairs
+   arrive as webhook directives the merchant applies itself. The `/demo` store
+   keeps its state in memory, so the demo runs on one instance.
 8. **The live detectors are tested on the scenarios we wrote.** Every scenario
    is diagnosed correctly, and the scenario label provably never reaches
    Handshake. That shows the detectors match their signatures. It does not
@@ -411,7 +434,8 @@ handshake/
 ├── server/            C8  FastAPI app and the live console
 ├── console/               generated static report
 ├── readiness/             audit, price and prove catalogue repairs
-├── store/                 SQLite persistence
+├── database.py            one layer for PostgreSQL and SQLite: pool, migrations, locks
+├── store/                 simulation-run persistence
 ├── experiments/           batch runner, allocation, metrics, CLI
 └── tests/                 97 tests: every rule, every detector, the chain, the
                            pool, both APIs, tenancy, and the demo end to end

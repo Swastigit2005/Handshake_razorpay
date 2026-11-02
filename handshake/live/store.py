@@ -1,184 +1,35 @@
 """Tenant-scoped persistence for the live plane.
 
-Every table carries `merchant_id`, and every query in this module filters on it.
-There is no function here that reads across tenants except the sweeper's scan
-for idle journeys, which returns ids only.
+Every table carries `merchant_id`, and every query here filters on it, except
+the sweeper's scans for idle journeys and due webhooks, which return ids only.
 
-SQLite in WAL mode is the default because it needs no infrastructure and
-survives a restart. The SQL is deliberately plain (no upsert syntax beyond
-`INSERT OR IGNORE`, no JSON operators) so the module ports to Postgres by
-swapping `connect()`.
+Runs on PostgreSQL in production and SQLite locally, through
+`handshake.database`. Everything that several replicas might race on is a
+single conditional statement or holds an advisory lock:
+
+  closing a journey      UPDATE … WHERE status IN (…) RETURNING  — one winner
+  expiring a re-offer    UPDATE … WHERE status = 'recovering' RETURNING
+  claiming a webhook     SELECT … FOR UPDATE SKIP LOCKED, leased
+  appending to a ledger  advisory lock per merchant
+  numbering events       advisory lock per journey
+
+So any number of API processes and workers can run against one database.
 """
 
 import hashlib
 import json
-import os
 import secrets
-import sqlite3
-import threading
 import time
 import uuid
-from contextlib import contextmanager
 
-from ..store.db import DEFAULT_PATH as _SIM_PATH
+from ..database import connect, load
+from ..database import target as _target
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS merchants (
-    merchant_id     TEXT PRIMARY KEY,
-    name            TEXT NOT NULL,
-    key_hash        TEXT NOT NULL UNIQUE,
-    key_prefix      TEXT NOT NULL,
-    webhook_url     TEXT NOT NULL DEFAULT '',
-    webhook_secret  TEXT NOT NULL,
-    policy          TEXT NOT NULL DEFAULT '{}',
-    settings        TEXT NOT NULL DEFAULT '{}',
-    sandbox         INTEGER NOT NULL DEFAULT 0,
-    created_at      REAL NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS journeys (
-    merchant_id     TEXT NOT NULL,
-    journey_id      TEXT NOT NULL,
-    agent_id        TEXT NOT NULL,
-    principal_id    TEXT NOT NULL DEFAULT '',
-    checkout_id     TEXT NOT NULL DEFAULT '',
-    status          TEXT NOT NULL,       -- open|converted|abandoned|recovering|recovered|lost|exception
-    stage           TEXT NOT NULL DEFAULT 'discovery',
-    sku             TEXT NOT NULL DEFAULT '',
-    basket_value    REAL NOT NULL DEFAULT 0,
-    recovered_value REAL NOT NULL DEFAULT 0,
-    concession      REAL NOT NULL DEFAULT 0,
-    opened_at       REAL NOT NULL,
-    last_event_at   REAL NOT NULL,
-    closed_at       REAL NOT NULL DEFAULT 0,
-    close_reason    TEXT NOT NULL DEFAULT '',
-    attempts        INTEGER NOT NULL DEFAULT 0,
-    diagnosis       TEXT NOT NULL DEFAULT '{}',
-    verdict         TEXT NOT NULL DEFAULT '{}',
-    directive       TEXT NOT NULL DEFAULT '{}',
-    PRIMARY KEY (merchant_id, journey_id)
-);
-CREATE INDEX IF NOT EXISTS journeys_open ON journeys (status, last_event_at);
-CREATE INDEX IF NOT EXISTS journeys_agent ON journeys (merchant_id, agent_id, opened_at);
-CREATE INDEX IF NOT EXISTS journeys_checkout ON journeys (merchant_id, checkout_id);
-CREATE INDEX IF NOT EXISTS journeys_recent ON journeys (merchant_id, last_event_at DESC);
-
-CREATE TABLE IF NOT EXISTS events (
-    merchant_id     TEXT NOT NULL,
-    event_id        TEXT NOT NULL,
-    journey_id      TEXT NOT NULL,
-    seq             INTEGER NOT NULL,
-    ts              REAL NOT NULL,
-    type            TEXT NOT NULL,
-    http_status     INTEGER NOT NULL DEFAULT 200,
-    payload         TEXT NOT NULL,
-    PRIMARY KEY (merchant_id, event_id)
-);
-CREATE INDEX IF NOT EXISTS events_journey ON events (merchant_id, journey_id, seq);
-
-CREATE TABLE IF NOT EXISTS catalog (
-    merchant_id     TEXT NOT NULL,
-    sku             TEXT NOT NULL,
-    record          TEXT NOT NULL,
-    updated_at      REAL NOT NULL,
-    PRIMARY KEY (merchant_id, sku)
-);
-
-CREATE TABLE IF NOT EXISTS schemas (
-    merchant_id     TEXT NOT NULL,
-    category        TEXT NOT NULL,
-    required        TEXT NOT NULL,
-    PRIMARY KEY (merchant_id, category)
-);
-
-CREATE TABLE IF NOT EXISTS interventions (
-    merchant_id     TEXT NOT NULL,
-    agent_id        TEXT NOT NULL,
-    journey_id      TEXT NOT NULL,
-    intervention_id TEXT NOT NULL,
-    concession      REAL NOT NULL DEFAULT 0,
-    mandate_retry   INTEGER NOT NULL DEFAULT 0,
-    ts              REAL NOT NULL
-);
-CREATE INDEX IF NOT EXISTS interventions_agent ON interventions (merchant_id, agent_id, ts);
-
-CREATE TABLE IF NOT EXISTS declines (
-    merchant_id     TEXT NOT NULL,
-    agent_id        TEXT NOT NULL,
-    ts              REAL NOT NULL,
-    PRIMARY KEY (merchant_id, agent_id)
-);
-
-CREATE TABLE IF NOT EXISTS reoffers (
-    merchant_id     TEXT NOT NULL,
-    journey_id      TEXT NOT NULL,
-    offer_id        TEXT NOT NULL,
-    offer           TEXT NOT NULL,
-    created_at      REAL NOT NULL,
-    expires_at      REAL NOT NULL,
-    fetched_at      REAL NOT NULL DEFAULT 0,
-    PRIMARY KEY (merchant_id, journey_id)
-);
-
-CREATE TABLE IF NOT EXISTS live_ledger (
-    merchant_id     TEXT NOT NULL,
-    seq             INTEGER NOT NULL,
-    entry_id        TEXT NOT NULL,
-    journey_id      TEXT,
-    prev_hash       TEXT NOT NULL,
-    hash            TEXT NOT NULL,
-    payload         TEXT NOT NULL,
-    PRIMARY KEY (merchant_id, seq)
-);
-CREATE INDEX IF NOT EXISTS live_ledger_journey ON live_ledger (merchant_id, journey_id);
-
-CREATE TABLE IF NOT EXISTS deliveries (
-    delivery_id     TEXT PRIMARY KEY,
-    merchant_id     TEXT NOT NULL,
-    journey_id      TEXT NOT NULL DEFAULT '',
-    event           TEXT NOT NULL,
-    payload         TEXT NOT NULL,
-    status          TEXT NOT NULL,        -- pending|delivered|failed|skipped
-    attempts        INTEGER NOT NULL DEFAULT 0,
-    next_attempt_at REAL NOT NULL,
-    last_error      TEXT NOT NULL DEFAULT '',
-    response_status INTEGER NOT NULL DEFAULT 0,
-    created_at      REAL NOT NULL,
-    delivered_at    REAL NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS deliveries_due ON deliveries (status, next_attempt_at);
-CREATE INDEX IF NOT EXISTS deliveries_journey ON deliveries (merchant_id, journey_id);
-"""
-
-_init_lock = threading.Lock()
-_initialised = set()
-_ledger_lock = threading.Lock()
+JOURNEY_JSON = ("diagnosis", "verdict", "directive")
 
 
 def db_path():
-    return os.environ.get("HS_LIVE_DB") or os.environ.get("HS_DB") or _SIM_PATH
-
-
-@contextmanager
-def connect(path=None):
-    path = path or db_path()
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    conn = sqlite3.connect(path, timeout=15)
-    conn.row_factory = sqlite3.Row
-    try:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA busy_timeout=15000")
-        if path not in _initialised:
-            with _init_lock:
-                conn.executescript(SCHEMA)
-                _initialised.add(path)
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    return _target()
 
 
 def _j(value):
@@ -190,36 +41,39 @@ def _row(row, json_fields=()):
         return None
     out = dict(row)
     for name in json_fields:
-        if name in out and isinstance(out[name], str):
-            out[name] = json.loads(out[name] or "{}")
+        if name in out:
+            out[name] = load(out[name])
     return out
 
 
-# ------------------------------------------------------------- merchants ----
+# ------------------------------------------------------------- merchants ---
 
 def hash_key(api_key):
     return hashlib.sha256(api_key.encode()).hexdigest()
+
+
+def _new_key(sandbox):
+    return f"hsk_{'test' if sandbox else 'live'}_{secrets.token_hex(20)}"
 
 
 def create_merchant(name, webhook_url="", policy=None, settings=None, sandbox=False,
                     merchant_id=None):
     """Returns (merchant, api_key). The key is shown once and stored hashed."""
     merchant_id = merchant_id or f"m_{uuid.uuid4().hex[:12]}"
-    api_key = f"hsk_{'test' if sandbox else 'live'}_{secrets.token_hex(20)}"
-    secret = f"whsec_{secrets.token_hex(24)}"
+    api_key = _new_key(sandbox)
     with connect() as conn:
         conn.execute(
             "INSERT INTO merchants (merchant_id, name, key_hash, key_prefix, webhook_url,"
             " webhook_secret, policy, settings, sandbox, created_at)"
             " VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (merchant_id, name, hash_key(api_key), api_key[:13], webhook_url, secret,
-             _j(policy or {}), _j(settings or {}), 1 if sandbox else 0, time.time()))
+            (merchant_id, name, hash_key(api_key), api_key[:13], webhook_url,
+             f"whsec_{secrets.token_hex(24)}", _j(policy or {}), _j(settings or {}),
+             1 if sandbox else 0, time.time()))
     return get_merchant(merchant_id), api_key
 
 
 def rotate_key(merchant_id):
-    api_key = f"hsk_{'test' if get_merchant(merchant_id)['sandbox'] else 'live'}_" \
-              f"{secrets.token_hex(20)}"
+    api_key = _new_key(get_merchant(merchant_id)["sandbox"])
     with connect() as conn:
         conn.execute("UPDATE merchants SET key_hash=?, key_prefix=? WHERE merchant_id=?",
                      (hash_key(api_key), api_key[:13], merchant_id))
@@ -266,10 +120,7 @@ def public_merchant(m):
             "created_at": m["created_at"]}
 
 
-# -------------------------------------------------------------- journeys ----
-
-JOURNEY_JSON = ("diagnosis", "verdict", "directive")
-
+# -------------------------------------------------------------- journeys ---
 
 def get_journey(merchant_id, journey_id):
     with connect() as conn:
@@ -310,8 +161,9 @@ def create_journey(merchant_id, journey_id, agent_id, principal_id="", ts=None):
     ts = ts or time.time()
     with connect() as conn:
         conn.execute(
-            "INSERT OR IGNORE INTO journeys (merchant_id, journey_id, agent_id, principal_id,"
-            " status, opened_at, last_event_at) VALUES (?,?,?,?, 'open', ?, ?)",
+            "INSERT INTO journeys (merchant_id, journey_id, agent_id, principal_id,"
+            " status, opened_at, last_event_at) VALUES (?,?,?,?, 'open', ?, ?)"
+            " ON CONFLICT (merchant_id, journey_id) DO NOTHING",
             (merchant_id, journey_id, agent_id, principal_id, ts, ts))
     return get_journey(merchant_id, journey_id)
 
@@ -326,6 +178,21 @@ def update_journey(merchant_id, journey_id, **fields):
     with connect() as conn:
         conn.execute(f"UPDATE journeys SET {', '.join(sets)} WHERE merchant_id=? AND"
                      " journey_id=?", args + [merchant_id, journey_id])
+
+
+def transition(merchant_id, journey_id, from_statuses, to_status, **fields):
+    """Atomically move a journey between states. Returns the journey if this
+    caller won, None if the journey was not in `from_statuses` — another
+    replica already moved it, or it was never eligible."""
+    sets = ["status = ?"] + [f"{k} = ?" for k in fields]
+    args = [to_status] + [(_j(v) if k in JOURNEY_JSON else v) for k, v in fields.items()]
+    marks = ",".join("?" * len(from_statuses))
+    with connect() as conn:
+        row = conn.execute(
+            f"UPDATE journeys SET {', '.join(sets)} WHERE merchant_id=? AND journey_id=?"
+            f" AND status IN ({marks}) RETURNING *",
+            args + [merchant_id, journey_id] + list(from_statuses)).fetchone()
+    return _row(row, JOURNEY_JSON)
 
 
 def list_journeys(merchant_id, status=None, limit=50, offset=0):
@@ -343,41 +210,48 @@ def list_journeys(merchant_id, status=None, limit=50, offset=0):
 
 
 def idle_journeys(now, default_idle):
-    """(merchant_id, journey_id, idle_seconds) for every open journey past its idle
-    window. Per-merchant idle windows are applied by the caller."""
+    """(merchant_id, journey_id) for every open journey past its merchant's idle
+    window. Eligibility only; `transition` decides who actually closes it."""
     with connect() as conn:
         rows = conn.execute(
             "SELECT j.merchant_id, j.journey_id, j.last_event_at, m.settings"
             " FROM journeys j JOIN merchants m ON m.merchant_id = j.merchant_id"
-            " WHERE j.status = 'open'").fetchall()
+            " WHERE j.status = 'open' AND j.last_event_at < ?", (now - 1,)).fetchall()
     out = []
     for r in rows:
-        idle = json.loads(r["settings"] or "{}").get("idle_seconds", default_idle)
+        idle = load(r["settings"]).get("idle_seconds", default_idle)
         if now - r["last_event_at"] >= idle:
             out.append((r["merchant_id"], r["journey_id"]))
     return out
 
 
-def expired_recoveries(now):
+def expire_recoveries(now):
+    """Atomically mark recovering journeys whose re-offer lapsed as lost. Each row
+    is returned to exactly one caller, however many workers run this."""
     with connect() as conn:
         rows = conn.execute(
-            "SELECT j.merchant_id, j.journey_id FROM journeys j JOIN reoffers r"
-            " ON r.merchant_id=j.merchant_id AND r.journey_id=j.journey_id"
-            " WHERE j.status='recovering' AND r.expires_at < ?", (now,)).fetchall()
+            "UPDATE journeys SET status='lost' WHERE status='recovering' AND EXISTS ("
+            " SELECT 1 FROM reoffers r WHERE r.merchant_id = journeys.merchant_id"
+            " AND r.journey_id = journeys.journey_id AND r.expires_at < ?)"
+            " RETURNING merchant_id, journey_id", (now,)).fetchall()
     return [(r["merchant_id"], r["journey_id"]) for r in rows]
 
 
-# ---------------------------------------------------------------- events ----
+# ---------------------------------------------------------------- events ---
 
 def insert_event(merchant_id, journey_id, event):
-    """Idempotent on (merchant_id, event_id). Returns False for a duplicate."""
+    """Idempotent on (merchant_id, event_id). Returns False for a duplicate.
+    Sequence numbers are allocated under a per-journey lock, so two requests for
+    the same journey can never be given the same position."""
     with connect() as conn:
-        seq = conn.execute("SELECT COALESCE(MAX(seq), 0) + 1 s FROM events WHERE"
+        conn.lock(f"events:{merchant_id}:{journey_id}")
+        seq = conn.execute("SELECT COALESCE(MAX(seq), 0) + 1 AS s FROM events WHERE"
                            " merchant_id=? AND journey_id=?",
                            (merchant_id, journey_id)).fetchone()["s"]
         cur = conn.execute(
-            "INSERT OR IGNORE INTO events (merchant_id, event_id, journey_id, seq, ts, type,"
-            " http_status, payload) VALUES (?,?,?,?,?,?,?,?)",
+            "INSERT INTO events (merchant_id, event_id, journey_id, seq, ts, type,"
+            " http_status, payload) VALUES (?,?,?,?,?,?,?,?)"
+            " ON CONFLICT (merchant_id, event_id) DO NOTHING",
             (merchant_id, event["event_id"], journey_id, seq, event["ts"], event["type"],
              event.get("http_status", 200), _j(event)))
         return cur.rowcount == 1
@@ -396,10 +270,21 @@ def journey_events(merchant_id, journey_id):
                             " journey_id=? ORDER BY seq", (merchant_id, journey_id)).fetchall()
     out = []
     for r in rows:
-        ev = json.loads(r["payload"])
+        ev = load(r["payload"])
         ev["seq"] = r["seq"]
         out.append(ev)
     return out
+
+
+def purge_events(before):
+    """Retention: drop raw events older than `before` for journeys that are closed.
+    Diagnoses, verdicts and the ledger are kept; they carry the evidence."""
+    with connect() as conn:
+        cur = conn.execute(
+            "DELETE FROM events WHERE ts < ? AND NOT EXISTS (SELECT 1 FROM journeys j"
+            " WHERE j.merchant_id = events.merchant_id AND j.journey_id = events.journey_id"
+            " AND j.status IN ('open', 'recovering'))", (before,))
+        return cur.rowcount
 
 
 # --------------------------------------------------------------- catalog ----
@@ -408,8 +293,10 @@ def put_catalog(merchant_id, products):
     now = time.time()
     with connect() as conn:
         conn.executemany(
-            "INSERT OR REPLACE INTO catalog (merchant_id, sku, record, updated_at)"
-            " VALUES (?,?,?,?)", [(merchant_id, p["sku"], _j(p), now) for p in products])
+            "INSERT INTO catalog (merchant_id, sku, record, updated_at) VALUES (?,?,?,?)"
+            " ON CONFLICT (merchant_id, sku) DO UPDATE SET record = excluded.record,"
+            " updated_at = excluded.updated_at",
+            [(merchant_id, p["sku"], _j(p), now) for p in products])
     return len(products)
 
 
@@ -417,20 +304,21 @@ def get_product(merchant_id, sku):
     with connect() as conn:
         row = conn.execute("SELECT record FROM catalog WHERE merchant_id=? AND sku=?",
                            (merchant_id, sku)).fetchone()
-    return json.loads(row["record"]) if row else None
+    return load(row["record"]) if row else None
 
 
 def catalog(merchant_id):
     with connect() as conn:
-        rows = conn.execute("SELECT record FROM catalog WHERE merchant_id=?",
+        rows = conn.execute("SELECT record FROM catalog WHERE merchant_id=? ORDER BY sku",
                             (merchant_id,)).fetchall()
-    return [json.loads(r["record"]) for r in rows]
+    return [load(r["record"]) for r in rows]
 
 
 def put_schema(merchant_id, schema):
     with connect() as conn:
         conn.executemany(
-            "INSERT OR REPLACE INTO schemas (merchant_id, category, required) VALUES (?,?,?)",
+            "INSERT INTO schemas (merchant_id, category, required) VALUES (?,?,?)"
+            " ON CONFLICT (merchant_id, category) DO UPDATE SET required = excluded.required",
             [(merchant_id, cat, _j(list(req))) for cat, req in schema.items()])
     return get_schema(merchant_id)
 
@@ -439,7 +327,7 @@ def get_schema(merchant_id):
     with connect() as conn:
         rows = conn.execute("SELECT category, required FROM schemas WHERE merchant_id=?",
                             (merchant_id,)).fetchall()
-    return {r["category"]: json.loads(r["required"]) for r in rows}
+    return {r["category"]: load(r["required"], []) for r in rows}
 
 
 # ------------------------------------------------ buyer history for policy ----
@@ -456,32 +344,31 @@ def record_intervention(merchant_id, agent_id, journey_id, intervention_id, conc
 
 def record_decline(merchant_id, agent_id):
     with connect() as conn:
-        conn.execute("INSERT OR REPLACE INTO declines (merchant_id, agent_id, ts)"
-                     " VALUES (?,?,?)", (merchant_id, agent_id, time.time()))
+        conn.execute("INSERT INTO declines (merchant_id, agent_id, ts) VALUES (?,?,?)"
+                     " ON CONFLICT (merchant_id, agent_id) DO UPDATE SET ts = excluded.ts",
+                     (merchant_id, agent_id, time.time()))
 
 
 def buyer_history(merchant_id, agent_id, journey_id, window=86400):
     since = time.time() - window
     with connect() as conn:
         iv = conn.execute(
-            "SELECT COUNT(*) n, COALESCE(SUM(concession),0) c,"
-            " COALESCE(SUM(mandate_retry),0) mr FROM interventions"
+            "SELECT COUNT(*) AS n, COALESCE(SUM(concession),0) AS c FROM interventions"
             " WHERE merchant_id=? AND agent_id=? AND ts > ?",
             (merchant_id, agent_id, since)).fetchone()
         jc = conn.execute(
-            "SELECT COALESCE(SUM(concession),0) c, COALESCE(SUM(mandate_retry),0) mr"
-            " FROM interventions WHERE merchant_id=? AND journey_id=?",
-            (merchant_id, journey_id)).fetchone()
+            "SELECT COALESCE(SUM(mandate_retry),0) AS mr FROM interventions"
+            " WHERE merchant_id=? AND journey_id=?", (merchant_id, journey_id)).fetchone()
         ab = conn.execute(
-            "SELECT COUNT(*) n FROM journeys WHERE merchant_id=? AND agent_id=? AND"
+            "SELECT COUNT(*) AS n FROM journeys WHERE merchant_id=? AND agent_id=? AND"
             " journey_id != ? AND opened_at > ? AND status IN"
             " ('abandoned','recovering','recovered','lost','exception')",
             (merchant_id, agent_id, journey_id, since)).fetchone()
-        dec = conn.execute("SELECT 1 FROM declines WHERE merchant_id=? AND agent_id=?",
+        dec = conn.execute("SELECT 1 AS d FROM declines WHERE merchant_id=? AND agent_id=?",
                            (merchant_id, agent_id)).fetchone()
-    return {"interventions_24h": iv["n"], "concession_24h": iv["c"],
-            "journey_concession": jc["c"], "mandate_retries": jc["mr"],
-            "abandonments_24h": ab["n"], "declined": dec is not None}
+    return {"interventions_24h": int(iv["n"]), "concession_24h": float(iv["c"]),
+            "mandate_retries": int(jc["mr"]), "abandonments_24h": int(ab["n"]),
+            "declined": dec is not None}
 
 
 # -------------------------------------------------------------- reoffers ----
@@ -492,8 +379,11 @@ def put_reoffer(merchant_id, journey_id, offer, ttl_seconds):
     offer = dict(offer, offer_id=offer_id, expires_at=now + ttl_seconds)
     with connect() as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO reoffers (merchant_id, journey_id, offer_id, offer,"
-            " created_at, expires_at) VALUES (?,?,?,?,?,?)",
+            "INSERT INTO reoffers (merchant_id, journey_id, offer_id, offer, created_at,"
+            " expires_at, fetched_at) VALUES (?,?,?,?,?,?,0)"
+            " ON CONFLICT (merchant_id, journey_id) DO UPDATE SET offer_id = excluded.offer_id,"
+            " offer = excluded.offer, created_at = excluded.created_at,"
+            " expires_at = excluded.expires_at, fetched_at = 0",
             (merchant_id, journey_id, offer_id, _j(offer), now, now + ttl_seconds))
     return offer
 
@@ -507,7 +397,7 @@ def get_reoffer(merchant_id, journey_id, mark_fetched=True):
                          " journey_id=?", (time.time(), merchant_id, journey_id))
     if row is None:
         return None
-    out = json.loads(row["offer"])
+    out = load(row["offer"])
     out["fetched_at"] = row["fetched_at"] or (time.time() if mark_fetched else 0)
     out["expired"] = row["expires_at"] < time.time()
     return out
@@ -527,10 +417,10 @@ def ledger_append(merchant_id, journey_id, actor, action, **body):
                "actor": actor, "action": action}
     for key in ("trigger", "diagnosis", "policy_checks", "outcome", "reversal"):
         payload[key] = body.get(key) or ({} if key != "policy_checks" else [])
-    # One writer at a time per process; BEGIN IMMEDIATE serialises across
-    # processes, so two writers can never read the same predecessor hash.
-    with _ledger_lock, connect() as conn:
-        conn.execute("BEGIN IMMEDIATE")
+    # Round-trip through JSON first so the hash is over exactly what is stored.
+    payload = json.loads(json.dumps(payload, default=str))
+    with connect() as conn:
+        conn.lock(f"ledger:{merchant_id}")
         last = conn.execute("SELECT seq, hash FROM live_ledger WHERE merchant_id=?"
                             " ORDER BY seq DESC LIMIT 1", (merchant_id,)).fetchone()
         seq = (last["seq"] + 1) if last else 0
@@ -539,7 +429,7 @@ def ledger_append(merchant_id, journey_id, actor, action, **body):
         conn.execute("INSERT INTO live_ledger (merchant_id, seq, entry_id, journey_id,"
                      " prev_hash, hash, payload) VALUES (?,?,?,?,?,?,?)",
                      (merchant_id, seq, entry["entry_id"], journey_id, prev, entry["hash"],
-                      _j(entry)))
+                      json.dumps(entry, default=str)))
     return entry
 
 
@@ -571,23 +461,33 @@ def verify_ledger(merchant_id):
 
 # ------------------------------------------------------------ deliveries ----
 
-def enqueue_delivery(merchant_id, journey_id, event, payload):
+def enqueue_delivery(merchant_id, journey_id, event, payload, status="pending",
+                     last_error=""):
     delivery_id = f"wh_{uuid.uuid4().hex[:16]}"
     now = time.time()
     with connect() as conn:
         conn.execute(
             "INSERT INTO deliveries (delivery_id, merchant_id, journey_id, event, payload,"
-            " status, next_attempt_at, created_at) VALUES (?,?,?,?,?, 'pending', ?, ?)",
-            (delivery_id, merchant_id, journey_id, event, _j(payload), now, now))
+            " status, next_attempt_at, created_at, last_error) VALUES (?,?,?,?,?,?,?,?,?)",
+            (delivery_id, merchant_id, journey_id or "", event, _j(payload), status, now, now,
+             last_error))
     return delivery_id
 
 
-def due_deliveries(now, limit=25):
+def claim_deliveries(now, limit=25, lease=60.0):
+    """Take up to `limit` due deliveries and push their next attempt `lease`
+    seconds out, so a crashed sender's rows come back on their own and no two
+    workers send the same row at once."""
     with connect() as conn:
-        rows = conn.execute("SELECT * FROM deliveries WHERE status='pending' AND"
-                            " next_attempt_at <= ? ORDER BY next_attempt_at LIMIT ?",
-                            (now, limit)).fetchall()
-    return [_row(r, ("payload",)) for r in rows]
+        rows = conn.execute(
+            "SELECT * FROM deliveries WHERE status='pending' AND next_attempt_at <= ?"
+            " ORDER BY next_attempt_at LIMIT ?" + conn.skip_locked(), (now, limit)).fetchall()
+        claimed = [_row(r, ("payload",)) for r in rows]
+        if claimed:
+            marks = ",".join("?" * len(claimed))
+            conn.execute(f"UPDATE deliveries SET next_attempt_at = ? WHERE delivery_id IN"
+                         f" ({marks})", [now + lease] + [r["delivery_id"] for r in claimed])
+    return claimed
 
 
 def mark_delivery(delivery_id, **fields):
@@ -618,13 +518,13 @@ def metrics(merchant_id, since=0.0):
             "SELECT status, basket_value, recovered_value, concession, diagnosis, verdict"
             " FROM journeys WHERE merchant_id=? AND opened_at >= ?",
             (merchant_id, since)).fetchall()
-        dl = conn.execute("SELECT status, COUNT(*) n FROM deliveries WHERE merchant_id=?"
+        dl = conn.execute("SELECT status, COUNT(*) AS n FROM deliveries WHERE merchant_id=?"
                           " GROUP BY status", (merchant_id,)).fetchall()
     out = {"journeys": len(rows), "open": 0, "converted": 0, "converted_value": 0.0,
            "abandoned": 0, "at_risk_value": 0.0, "recovering": 0, "recovered": 0,
            "recovered_value": 0.0, "lost": 0, "exceptions": 0, "concession": 0.0,
            "by_cause": {}, "refusals": {}, "interventions": {},
-           "webhooks": {r["status"]: r["n"] for r in dl}}
+           "webhooks": {r["status"]: int(r["n"]) for r in dl}}
     for r in rows:
         st = r["status"]
         if st == "open":
@@ -642,14 +542,14 @@ def metrics(merchant_id, since=0.0):
                  "exception": "exceptions"}[st]] += 1
         if st == "recovered":
             out["recovered_value"] += r["recovered_value"]
-        dg = json.loads(r["diagnosis"] or "{}")
+        dg = load(r["diagnosis"])
         cause = dg.get("cause") or "UNKNOWN"
         row = out["by_cause"].setdefault(cause, {"name": dg.get("name", ""), "count": 0,
                                                  "at_risk": 0.0, "recovered": 0.0})
         row["count"] += 1
         row["at_risk"] += r["basket_value"]
         row["recovered"] += r["recovered_value"] if st == "recovered" else 0.0
-        vd = json.loads(r["verdict"] or "{}")
+        vd = load(r["verdict"])
         if vd and not vd.get("permitted", True):
             rule = vd.get("binding_rule", "?")
             out["refusals"][rule] = out["refusals"].get(rule, 0) + 1
@@ -661,3 +561,15 @@ def metrics(merchant_id, since=0.0):
     for k in ("converted_value", "at_risk_value", "recovered_value", "concession"):
         out[k] = round(out[k], 2)
     return out
+
+
+def counts():
+    """Operator-level totals for /metrics. No tenant data."""
+    with connect() as conn:
+        j = conn.execute("SELECT status, COUNT(*) AS n FROM journeys GROUP BY status").fetchall()
+        d = conn.execute("SELECT status, COUNT(*) AS n FROM deliveries GROUP BY status").fetchall()
+        m = conn.execute("SELECT COUNT(*) AS n FROM merchants").fetchone()
+        e = conn.execute("SELECT COUNT(*) AS n FROM events").fetchone()
+    return {"journeys": {r["status"]: int(r["n"]) for r in j},
+            "deliveries": {r["status"]: int(r["n"]) for r in d},
+            "merchants": int(m["n"]), "events": int(e["n"])}

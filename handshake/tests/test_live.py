@@ -174,6 +174,9 @@ fastapi = pytest.importorskip("fastapi", reason="console extra not installed")
 pytest.importorskip("httpx", reason="httpx is needed by fastapi's TestClient")
 from fastapi.testclient import TestClient  # noqa: E402
 
+# The connection pools live here; re-importing it would orphan open pools.
+KEEP_MODULES = {"handshake", "handshake.database"}
+
 
 @pytest.fixture()
 def live(tmp_path, monkeypatch):
@@ -183,7 +186,7 @@ def live(tmp_path, monkeypatch):
     monkeypatch.setenv("HS_ADMIN_TOKEN", "admin-secret")
     monkeypatch.setenv("HS_PAYMENTS", "sim")
     for mod in [m for m in list(sys.modules) if m.startswith("handshake")
-                and not m.startswith("handshake.tests")]:
+                and m not in KEEP_MODULES and not m.startswith("handshake.tests")]:
         del sys.modules[mod]
     from handshake.server import app as server
     from handshake.live import pipeline, store, webhooks
@@ -413,29 +416,46 @@ def test_webhook_verification_rejects_tampering_and_replay():
 # ------------------------------------------------- demo store, end to end ---
 
 @pytest.fixture()
-def demo(live, monkeypatch):
-    tc = live["tc"]
+def demo(tmp_path, monkeypatch):
+    """A real uvicorn server on a free port. The agent, the shop's SDK and the
+    webhooks all go over real HTTP, exactly as in a deployment."""
+    import socket
+    import threading
+
+    import uvicorn
+
+    monkeypatch.setenv("HS_DB", str(tmp_path / "e2e.db"))
+    monkeypatch.setenv("HS_NO_SEED", "1")
+    monkeypatch.setenv("HS_PAYMENTS", "sim")
+    monkeypatch.setenv("HS_LOG_LEVEL", "WARNING")
+    for mod in [m for m in list(sys.modules) if m.startswith("handshake")
+                and m not in KEEP_MODULES and not m.startswith("handshake.tests")]:
+        del sys.modules[mod]
+    from handshake.server import app as server
     from handshake.demo_shop import runner
 
     monkeypatch.setitem(runner.SANDBOX_SETTINGS, "idle_seconds", 1)
     monkeypatch.setitem(runner.SANDBOX_SETTINGS, "retry_after_seconds", 0)
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+    srv = uvicorn.Server(uvicorn.Config(server.app, host="127.0.0.1", port=port,
+                                        log_level="warning", lifespan="on"))
+    thread = threading.Thread(target=srv.run, daemon=True)
+    thread.start()
+    deadline = time.time() + 15
+    while not srv.started and time.time() < deadline:
+        time.sleep(0.05)
+    assert srv.started, "uvicorn did not start"
+    from handshake.live import pipeline
+    pipeline.WORKER.interval = 0.1
+    runner.bootstrap(f"http://127.0.0.1:{port}")
+    yield runner
+    srv.should_exit = True
+    thread.join(timeout=20)
 
-    def sdk_transport(method, url, body, headers, timeout):
-        r = tc.request(method, "/" + url.split("://", 1)[1].split("/", 1)[1],
-                       content=body, headers=headers)
-        return r.status_code, r.content
 
-    def agent_http(method, url, body=None, headers=None):
-        r = tc.request(method, "/" + url.split("://", 1)[1].split("/", 1)[1],
-                       json=body, headers=headers)
-        return r.status_code, (r.json() if r.content else {})
-
-    runner.bootstrap("http://testserver", http=agent_http, transport=sdk_transport)
-    live["pipeline"].WORKER.interval = 0.1
-    return runner
-
-
-def _finish(runner, run, timeout=40):
+def _finish(runner, run, timeout=60):
     deadline = time.time() + timeout
     while time.time() < deadline:
         v = runner.view(run["run_id"])
@@ -443,7 +463,11 @@ def _finish(runner, run, timeout=40):
         if v["status"] == "done" and j and j["status"] not in ("open", "abandoned", "recovering"):
             return v
         time.sleep(0.2)
-    raise AssertionError(f"run did not settle: {runner.view(run['run_id'])['journey']}")
+    v = runner.view(run["run_id"])
+    raise AssertionError(f"run did not settle: status={v['status']} error={v['error']!r} "
+                         f"journey={(v['journey'] or {}).get('status')} "
+                         f"sdk={runner.STATE['client'].stats} "
+                         f"thoughts={[t['text'][:60] for t in v['thoughts'][-4:]]}")
 
 
 EXPECTED = {
@@ -457,7 +481,7 @@ EXPECTED = {
 }
 
 
-def test_demo_scenarios_end_to_end_through_the_sdk(demo, live):
+def test_demo_scenarios_end_to_end_through_the_sdk(demo):
     runs = {name: demo.start(name, pace=0, reoffer_wait=15) for name in EXPECTED}
     clean = demo.start("clean", pace=0, reoffer_wait=0)
     for name, run in runs.items():
@@ -473,6 +497,84 @@ def test_demo_scenarios_end_to_end_through_the_sdk(demo, live):
         if name not in ("insufficient_funds",):     # that one is also a real rail code
             assert name not in stored, name
     assert _finish(demo, clean)["journey"]["status"] == "converted"
-    key = demo.STATE["api_key"]
-    assert live["tc"].get("/v1/ledger/verify",
-                          headers={"Authorization": f"Bearer {key}"}).json()["valid"]
+    from handshake.live import store
+    assert store.verify_ledger(demo.MERCHANT_ID)["valid"]
+
+
+# ------------------------------------------------- database and concurrency ---
+
+def test_readyz_reports_the_configured_backend(live):
+    import os
+    body = live["tc"].get("/readyz").json()
+    assert body["ready"] is True and body["schema_version"] == 2
+    want = "postgres" if os.environ.get("HS_TEST_DATABASE_URL") else "sqlite"
+    assert body["dialect"] == want
+    assert "@" not in body["database"].split("//")[-1].split("/")[0] or ":" not in \
+        body["database"].split("@")[0].split("//")[-1]          # no password printed
+
+
+def test_concurrent_ledger_appends_keep_one_valid_chain(live):
+    import threading
+    store = live["store"]
+    m, _ = store.create_merchant("Chain")
+    errors = []
+
+    def write(n):
+        try:
+            for i in range(10):
+                store.ledger_append(m["merchant_id"], f"j{n}", "test", "tick", outcome={"i": i})
+        except Exception as exc:                      # pragma: no cover
+            errors.append(exc)
+
+    threads = [threading.Thread(target=write, args=(n,)) for n in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert not errors
+    v = store.verify_ledger(m["merchant_id"])
+    assert v == {**v, "valid": True, "entries": 60}
+
+
+def test_two_workers_closing_one_journey_diagnose_it_once(live):
+    import threading
+    tc, store, pipeline = live["tc"], live["store"], live["pipeline"]
+    _, h = merchant(live)
+    _setup_catalogue(tc, h)
+    tc.post("/v1/events", json={"events": _discovery_events()}, headers=h)
+    m = store.merchant_by_key(h["Authorization"][7:])
+    barrier = threading.Barrier(4)
+
+    def race():
+        barrier.wait()
+        pipeline.close(m, "jr_1", "idle_timeout")
+
+    threads = [threading.Thread(target=race) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    actions = [e["action"] for e in store.ledger(m["merchant_id"], "jr_1")]
+    assert actions == ["diagnosed", "intervention_permitted"]
+    assert store.buyer_history(m["merchant_id"], "ag_1", "jr_1")["interventions_24h"] == 1
+
+
+def test_webhook_claims_are_exclusive(live):
+    store = live["store"]
+    m, _ = store.create_merchant("Hooks", webhook_url="http://testserver/x")
+    for i in range(5):
+        store.enqueue_delivery(m["merchant_id"], "", "ping", {"i": i})
+    first = store.claim_deliveries(time.time(), limit=10)
+    second = store.claim_deliveries(time.time(), limit=10)
+    assert len(first) == 5 and second == []          # leased, not re-sent
+    assert len(store.claim_deliveries(time.time() + 120, limit=10)) == 5   # lease lapsed
+
+
+def test_event_retention_keeps_open_journeys(live):
+    tc, store = live["tc"], live["store"]
+    _, h = merchant(live)
+    tc.post("/v1/events", json={"events": _discovery_events("jr_old")}, headers=h)
+    mid = store.merchant_by_key(h["Authorization"][7:])["merchant_id"]
+    assert store.purge_events(time.time() + 10) == 0          # still open: kept
+    store.update_journey(mid, "jr_old", status="lost")
+    assert store.purge_events(time.time() + 10) == 2

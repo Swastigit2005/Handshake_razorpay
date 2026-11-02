@@ -1,7 +1,7 @@
 """Seed the database from the canonical run committed to the repository.
 
-Free hosting tiers have an ephemeral filesystem: the SQLite file is lost on every
-redeploy and every spin-down. Without this, a visitor arriving at a cold URL sees
+Without PostgreSQL, free hosting tiers have an ephemeral filesystem: the SQLite
+file is lost on every redeploy and every spin-down. Without this, a visitor arriving at a cold URL sees
 an empty console and has to run a batch before anything means something.
 
 So on startup, if the store is empty, the canonical run in `runs/` is imported.
@@ -42,7 +42,7 @@ def seed(path=None, force=False):
     """Import the canonical batch and scan. Returns a short report.
 
     Idempotent: does nothing when the store already holds runs, unless forced."""
-    report = {"seeded": [], "skipped": "", "path": path or db.DEFAULT_PATH}
+    report = {"seeded": [], "skipped": "", "path": db.describe(path)}
 
     try:
         existing = db.stats(path)["runs"]
@@ -69,13 +69,14 @@ def seed(path=None, force=False):
                  summary.get("payments_backend", ""), summary.get("buyer_backend", ""),
                  1, json.dumps(summary, default=str)))
             conn.executemany(
-                "INSERT OR REPLACE INTO run_sessions (run_id, session_id, payload)"
-                " VALUES (?,?,?)",
+                "INSERT INTO run_sessions (run_id, session_id, payload) VALUES (?,?,?)"
+                " ON CONFLICT (run_id, session_id) DO UPDATE SET payload = excluded.payload",
                 [(run_id, s["session_id"], json.dumps(s, default=str))
                  for s in sessions])
             conn.executemany(
-                "INSERT OR REPLACE INTO ledger (run_id, seq, entry_id, session_id,"
-                " prev_hash, hash, payload) VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO ledger (run_id, seq, entry_id, session_id,"
+                " prev_hash, hash, payload) VALUES (?,?,?,?,?,?,?)"
+                " ON CONFLICT (run_id, seq) DO NOTHING",
                 [(run_id, i, e["entry_id"], e.get("session_id"), e["prev_hash"],
                   e["hash"], json.dumps(e, default=str))
                  for i, e in enumerate(entries)])

@@ -17,13 +17,17 @@ fastapi = pytest.importorskip("fastapi", reason="console extra not installed")
 pytest.importorskip("httpx", reason="httpx is needed by fastapi's TestClient")
 from fastapi.testclient import TestClient  # noqa: E402
 
+# The connection pools live here; re-importing it would orphan open pools.
+KEEP_MODULES = {"handshake", "handshake.database"}
+
 
 @pytest.fixture()
 def client(tmp_path, monkeypatch):
     monkeypatch.setenv("HS_DB", str(tmp_path / "test.db"))
     monkeypatch.setenv("HS_PAYMENTS", "sim")
     monkeypatch.setenv("HS_BUYERS", "heuristic")
-    for mod in [m for m in list(sys.modules) if m.startswith("handshake")]:
+    for mod in [m for m in list(sys.modules) if m.startswith("handshake")
+                and m not in KEEP_MODULES]:
         del sys.modules[mod]
     from handshake.server import app as server           # re-import with the temp DB
     server.STATE.__init__()
@@ -149,7 +153,8 @@ def test_a_second_run_is_refused_while_one_is_in_flight(client):
 def test_token_is_enforced_when_configured(tmp_path, monkeypatch):
     monkeypatch.setenv("HS_DB", str(tmp_path / "auth.db"))
     monkeypatch.setenv("HS_API_TOKEN", "s3cret")
-    for mod in [m for m in list(sys.modules) if m.startswith("handshake")]:
+    for mod in [m for m in list(sys.modules) if m.startswith("handshake")
+                and m not in KEEP_MODULES]:
         del sys.modules[mod]
     from handshake.server import app as server
     server.STATE.__init__()
@@ -168,7 +173,8 @@ def test_demo_mode_caps_the_batch_size(tmp_path, monkeypatch):
     monkeypatch.setenv("HS_DEMO_MODE", "1")
     monkeypatch.setenv("HS_MAX_SESSIONS", "60")
     monkeypatch.setenv("HS_MIN_RUN_GAP", "0")
-    for mod in [m for m in list(sys.modules) if m.startswith("handshake")]:
+    for mod in [m for m in list(sys.modules) if m.startswith("handshake")
+                and m not in KEEP_MODULES]:
         del sys.modules[mod]
     from handshake.server import app as server
     server.STATE.__init__()
@@ -206,7 +212,8 @@ def test_a_cold_store_is_seeded_from_the_committed_run(tmp_path, monkeypatch):
     """Free tiers lose the filesystem on every redeploy. A visitor arriving at a
     cold URL must still see the canonical figures, not an empty console."""
     monkeypatch.setenv("HS_DB", str(tmp_path / "cold.db"))
-    for mod in [m for m in list(sys.modules) if m.startswith("handshake")]:
+    for mod in [m for m in list(sys.modules) if m.startswith("handshake")
+                and m not in KEEP_MODULES]:
         del sys.modules[mod]
     from handshake.server import app as server
     server.STATE.__init__()
@@ -227,7 +234,8 @@ def test_a_cold_store_is_seeded_from_the_committed_run(tmp_path, monkeypatch):
 
 def test_seeding_never_overwrites_a_real_run(tmp_path, monkeypatch):
     monkeypatch.setenv("HS_DB", str(tmp_path / "warm.db"))
-    for mod in [m for m in list(sys.modules) if m.startswith("handshake")]:
+    for mod in [m for m in list(sys.modules) if m.startswith("handshake")
+                and m not in KEEP_MODULES]:
         del sys.modules[mod]
     from handshake.store import seed as seeder
     first = seeder.seed(path=str(tmp_path / "warm.db"))

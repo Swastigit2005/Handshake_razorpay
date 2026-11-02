@@ -1,72 +1,22 @@
 """Durable store.
 
 A deployed console must survive a restart with its evidence intact, so runs,
-their session tables and their audit ledgers are written to SQLite. The ledger
+their session tables and their audit ledgers are written to the database —
+PostgreSQL when DATABASE_URL is set, SQLite otherwise. The ledger
 table is append-only in the application layer: there is no update or delete
 path, and the hash chain is re-verified on read.
 """
 
+import hashlib
 import json
-import os
-import sqlite3
 import time
 import uuid
-from contextlib import contextmanager
 
-DEFAULT_PATH = os.environ.get(
-    "HS_DB", os.path.join(os.path.dirname(os.path.dirname(
-        os.path.dirname(os.path.abspath(__file__)))), "data", "handshake.db"))
+from ..database import connect, describe, target
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS runs (
-    run_id      TEXT PRIMARY KEY,
-    kind        TEXT NOT NULL,               -- batch | walkthrough | scan
-    created_at  REAL NOT NULL,
-    label       TEXT,
-    sessions    INTEGER,
-    seed        INTEGER,
-    payments    TEXT,
-    buyers      TEXT,
-    measured    INTEGER NOT NULL DEFAULT 1,  -- 0 for a demo walkthrough
-    summary     TEXT NOT NULL                -- json
-);
-
-CREATE TABLE IF NOT EXISTS run_sessions (
-    run_id      TEXT NOT NULL,
-    session_id  TEXT NOT NULL,
-    payload     TEXT NOT NULL,
-    PRIMARY KEY (run_id, session_id)
-);
-
-CREATE TABLE IF NOT EXISTS ledger (
-    run_id      TEXT NOT NULL,
-    seq         INTEGER NOT NULL,
-    entry_id    TEXT NOT NULL,
-    session_id  TEXT,
-    prev_hash   TEXT NOT NULL,
-    hash        TEXT NOT NULL,
-    payload     TEXT NOT NULL,
-    PRIMARY KEY (run_id, seq)
-);
-
-CREATE INDEX IF NOT EXISTS ledger_session ON ledger (run_id, session_id);
-CREATE INDEX IF NOT EXISTS runs_created ON runs (created_at DESC);
-"""
-
-
-@contextmanager
-def connect(path=None):
-    path = path or DEFAULT_PATH
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    conn = sqlite3.connect(path, timeout=10)
-    conn.row_factory = sqlite3.Row
-    try:
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.executescript(SCHEMA)
-        yield conn
-        conn.commit()
-    finally:
-        conn.close()
+# Kept for callers that print where the store lives. The database itself is
+# chosen by handshake.database.target(): DATABASE_URL, then HS_DB, then this.
+DEFAULT_PATH = target()
 
 
 def new_run_id(kind):
@@ -85,13 +35,14 @@ def save_batch(summary, sessions, ledger, kind="batch", label="", measured=True,
              summary.get("buyer_backend", ""), 1 if measured else 0,
              json.dumps(summary, default=str)))
         conn.executemany(
-            "INSERT OR REPLACE INTO run_sessions (run_id, session_id, payload)"
-            " VALUES (?,?,?)",
+            "INSERT INTO run_sessions (run_id, session_id, payload) VALUES (?,?,?)"
+            " ON CONFLICT (run_id, session_id) DO UPDATE SET payload = excluded.payload",
             [(run_id, s["session_id"], json.dumps(s, default=str)) for s in sessions])
         if ledger is not None:
             conn.executemany(
-                "INSERT OR REPLACE INTO ledger (run_id, seq, entry_id, session_id,"
-                " prev_hash, hash, payload) VALUES (?,?,?,?,?,?,?)",
+                "INSERT INTO ledger (run_id, seq, entry_id, session_id,"
+                " prev_hash, hash, payload) VALUES (?,?,?,?,?,?,?)"
+                " ON CONFLICT (run_id, seq) DO NOTHING",
                 [(run_id, i, e["entry_id"], e.get("session_id"), e["prev_hash"],
                   e["hash"], json.dumps(e, default=str))
                  for i, e in enumerate(ledger.entries)])
@@ -183,7 +134,6 @@ def chain(run_id, session_id=None, path=None):
 
 def verify_chain(run_id, path=None):
     """Re-verify the stored chain, independently of the in-memory ledger."""
-    import hashlib
     entries = chain(run_id, path=path)
     prev = "0" * 64
     for i, entry in enumerate(entries):
@@ -198,7 +148,6 @@ def verify_chain(run_id, path=None):
 
 def stats(path=None):
     with connect(path) as conn:
-        runs = conn.execute("SELECT COUNT(*) c FROM runs").fetchone()["c"]
-        entries = conn.execute("SELECT COUNT(*) c FROM ledger").fetchone()["c"]
-    return {"runs": runs, "ledger_entries": entries,
-            "path": path or DEFAULT_PATH}
+        runs = conn.execute("SELECT COUNT(*) AS c FROM runs").fetchone()["c"]
+        entries = conn.execute("SELECT COUNT(*) AS c FROM ledger").fetchone()["c"]
+    return {"runs": int(runs), "ledger_entries": int(entries), "path": describe(path)}

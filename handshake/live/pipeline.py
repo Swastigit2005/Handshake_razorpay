@@ -15,6 +15,8 @@ and a confidence; `policy.engine.PolicyEngine` — the same class, the same elev
 rules, the same unit tests as the simulator — decides whether anything happens.
 """
 
+import logging
+import os
 import threading
 import time
 import uuid
@@ -43,8 +45,6 @@ TERMINAL_OPEN = ("abandoned", "exception", "lost")
 REFUSAL_TO_STATUS = {"R-05": "lost"}        # everything else needs a human
 MAX_BATCH = 500
 
-_close_lock = threading.Lock()
-
 
 def settings_for(merchant):
     return {**DEFAULT_SETTINGS, **(merchant.get("settings") or {})}
@@ -60,7 +60,9 @@ def policy_for(merchant):
     return cfg
 
 
-_GLOBAL = {"kill": False}
+log = logging.getLogger("handshake.live")
+
+_GLOBAL = {"kill": os.environ.get("HS_GLOBAL_KILL_SWITCH", "").lower() in ("1", "true", "yes")}
 
 
 def global_kill_switch(value=None):
@@ -201,7 +203,7 @@ def _apply(merchant, j, ev):
     if ev["type"] == "checkout.cancel" and status in ("open", "recovering"):
         # From "recovering": the agent took the re-offer, tried again and gave up
         # again. That is a second attempt, and R-01 counts it.
-        close(merchant, jid, "agent_cancelled")
+        close(merchant, jid, "agent_cancelled", reclose=status == "recovering")
 
 
 # ------------------------------------------------------------------- close ---
@@ -225,16 +227,22 @@ def checklist(checks):
     return out
 
 
-def close(merchant, journey_id, reason):
+def close(merchant, journey_id, reason, reclose=False):
     """Close an open journey as abandoned and run it through diagnosis and the gate.
-    Safe to call twice: the second call finds it no longer open."""
+    Safe to call concurrently: exactly one caller wins the transition.
+
+    `reclose` is only for an agent that took a re-offer, tried again, and
+    cancelled again — the one case where a recovering journey is diagnosed a
+    second time. Sweepers never pass it, so a journey another worker has just
+    moved to recovering is left alone."""
     mid = merchant["merchant_id"]
-    with _close_lock:
-        j = store.get_journey(mid, journey_id)
-        if j is None or j["status"] not in ("open", "recovering"):
-            return j
-        store.update_journey(mid, journey_id, status="abandoned", closed_at=time.time(),
-                             close_reason=reason)
+    # One conditional UPDATE decides the winner, so two replicas sweeping the
+    # same idle journey diagnose it once.
+    j = store.transition(mid, journey_id, ("open", "recovering") if reclose else ("open",),
+                         "abandoned",
+                         closed_at=time.time(), close_reason=reason)
+    if j is None:
+        return store.get_journey(mid, journey_id)
 
     events = store.journey_events(mid, journey_id)
     schema = store.get_schema(mid)
@@ -355,8 +363,7 @@ def sweep(now=None):
         if merchant:
             close(merchant, jid, "idle_timeout")
             closed += 1
-    for mid, jid in store.expired_recoveries(now):
-        store.update_journey(mid, jid, status="lost")
+    for mid, jid in store.expire_recoveries(now):
         store.ledger_append(mid, jid, "pipeline", "reoffer_expired",
                             outcome={"status": "lost"})
         merchant = store.get_merchant(mid)
@@ -367,8 +374,14 @@ def sweep(now=None):
     return {"closed": closed, "expired": expired}
 
 
+def retention_days():
+    return float(os.environ.get("HS_EVENT_RETENTION_DAYS", "90"))
+
+
 class Worker:
-    """One background thread: sweeps idle journeys and delivers webhooks."""
+    """One background thread: sweeps idle journeys, delivers webhooks, and
+    applies event retention. Safe to run in every replica: each step claims its
+    rows atomically in the database."""
 
     def __init__(self, interval=0.5):
         self.interval = interval
@@ -376,6 +389,9 @@ class Worker:
         self._thread = None
         self.ticks = 0
         self.last_error = ""
+        self.last_purge = 0.0
+        self.counters = {"closed": 0, "expired": 0, "webhooks_sent": 0, "purged": 0,
+                         "errors": 0}
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -392,8 +408,14 @@ class Worker:
             self._thread.join(timeout=5)
 
     def tick(self):
-        sweep()
-        webhooks.deliver_due()
+        done = sweep()
+        self.counters["closed"] += done["closed"]
+        self.counters["expired"] += done["expired"]
+        self.counters["webhooks_sent"] += webhooks.deliver_due()
+        if time.time() - self.last_purge > 3600:
+            self.last_purge = time.time()
+            self.counters["purged"] += store.purge_events(
+                time.time() - retention_days() * 86400)
         self.ticks += 1
 
     def _loop(self):
@@ -401,7 +423,9 @@ class Worker:
             try:
                 self.tick()
             except Exception as exc:                     # the worker must never die
+                self.counters["errors"] += 1
                 self.last_error = f"{type(exc).__name__}: {exc}"
+                log.exception("live worker tick failed")
 
     @property
     def alive(self):

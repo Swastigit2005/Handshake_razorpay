@@ -81,6 +81,7 @@ def merchant_auth(request: Request, authorization: str = Header(default=""),
     merchant = store.merchant_by_key(key)
     if merchant is None:
         raise APIError(401, "authentication_error", "unknown or revoked API key")
+    request.state.merchant_id = merchant["merchant_id"]      # for the access log
     ok, wait = LIMITER.take(merchant["merchant_id"])
     if not ok:
         raise APIError(429, "rate_limited", f"slow down; retry in {wait:.2f}s")
