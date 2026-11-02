@@ -78,7 +78,31 @@ The two accounts were written independently and agree on both stops. Handshake's
 drafted fix for the second stop names the same decision Claude says it needs
 from its user: authorise a different payment method.
 
-## What this run found that seeded data never did
+## A second run, on the deployed site
+
+Against `https://handshake-console.onrender.com/mcp`, with a different product
+and problem: the aluminium laptop stand (LST-AL1) quietly ships in 9 days,
+which is not in its listing. The prompt asked for a stand for a 15.6" laptop,
+under ₹3,000, that must ship within 4 days, paid by card.
+
+**Claude (unedited excerpt):** "The cheaper Deccan Aluminium Stand (₹2,112.20)
+would also have fit, but it quoted 9 days to your pincode, so I cancelled that
+checkout rather than risk it missing your travel date." It then bought the
+Deccan Folding Desk Riser (LST-FD2) for ₹2,702.20, shipping in 2 days.
+
+**Handshake (from traffic only):** **N2 offer mismatch**, corroborated by the
+agent's stated reason: *"LST-AL1 was the weakest of the agent's options on ships
+in days: 9 against 2 for LST-FD2."* The re-offer it drafted for a person to
+approve: *"Deccan Folding Desk Riser (LST-FD2) has ships in days 2, against 9
+on LST-AL1."* That is the product Claude chose itself. The journey then
+reopened and was recorded as converted at ₹2,702.20. No rule for "slow
+delivery" exists; the weakest-option detector found it.
+
+The first attempt at this run, on the previous version, was diagnosed UNKNOWN.
+Claude compared products from search results without opening a product page,
+and its reason was free text. Both are now handled; see below.
+
+## What these runs found that seeded data never did
 
 The first Claude run exposed three real bugs, fixed before the run above:
 
@@ -90,6 +114,12 @@ The first Claude run exposed three real bugs, fixed before the run above:
 3. A model thinks for 5–20 s between calls, so the sandbox's 4-second silence
    timer would call it "abandoned" mid-thought. Asking the store for an offer is
    now itself the abandonment signal, and the silence fallback is 45 s.
+4. The weakest-option detector required a product page; it now judges the
+   record served in search results.
+5. An agent's free-text reason was ignored. It can now corroborate what the
+   traffic shows, but never create a hypothesis by itself.
+6. Offer polls after a purchase opened an empty journey that was then filed as
+   an unexplained abandonment. Polls no longer open journeys.
 
 ## Repeat it yourself
 
