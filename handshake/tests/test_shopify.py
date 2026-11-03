@@ -219,3 +219,22 @@ def test_stock_running_out_in_shopify_drafts_an_alternative(gateway):
     j = journey_of(gateway, lambda j: j["status"] not in ("open",))
     assert j["diagnosis"]["cause"] == "N1"
     assert j["verdict"]["proposal"]["action"] == "alternative_product"
+
+
+def test_real_catalogue_quirks_are_read():
+    """Shapes seen in a real dev store: specs outside `custom`, unit values,
+    padded numbers, untracked inventory, gift cards, SEO metafields."""
+    from handshake.shopify import catalog
+    from handshake.tests.fake_shopify import product
+    board = product(7, "Complete Snowboard", "snowboard", "complete", 699.95, {}, qty=0)
+    board["metafields"]["nodes"] = [
+        {"namespace": "test_data", "key": "snowboard_length",
+         "value": '{"value":159.0,"unit":"CENTIMETERS"}', "type": "dimension"},
+        {"namespace": "custom", "key": "battery_hours", "value": " 30", "type": ""},
+        {"namespace": "global", "key": "title_tag", "value": "SEO", "type": ""}]
+    gift = product(8, "Gift Card", "giftcard", "gift-card", 10, {})
+    gift["isGiftCard"] = True
+    recs = catalog.to_records([board, gift])
+    assert len(recs) == 1
+    assert recs[0]["attributes"] == {"snowboard_length": 159.0, "battery_hours": 30}
+    assert recs[0]["stock"] == 1                        # untracked: for sale at 0

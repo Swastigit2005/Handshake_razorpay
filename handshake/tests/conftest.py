@@ -20,6 +20,13 @@ for name in ["HS_LLM_API_KEY", "HS_LLM_API_KEYS", "HS_LLM_MODEL",
 for n in range(2, 10):
     os.environ[f"HS_LLM_API_KEY_{n}"] = ""
 
+# A connected Shopify store in .env must never be read, quoted or ordered from
+# by the suite; the Shopify tests use tests/fake_shopify.py.
+for name in ["SHOPIFY_STORE_DOMAIN", "SHOPIFY_CLIENT_ID", "SHOPIFY_CLIENT_SECRET",
+             "SHOPIFY_ADMIN_TOKEN", "SHOPIFY_REQUIRED_SPECS", "SHOPIFY_SPEC_NAMESPACES",
+             "SHOPIFY_ACCEPTED_METHODS", "SHOPIFY_SHIP_COUNTRY"]:
+    os.environ[name] = ""
+
 # A DATABASE_URL in .env must never point the suite at a real database.
 # HS_TEST_DATABASE_URL opts in to running every test against PostgreSQL, each in
 # a throwaway schema that is dropped afterwards.

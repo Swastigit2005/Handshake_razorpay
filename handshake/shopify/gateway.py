@@ -287,8 +287,8 @@ def update_session(cid: str):
 
 
 def accepted_methods():
-    return {m.strip() for m in os.environ.get(
-        "SHOPIFY_ACCEPTED_METHODS", "card_token,upi_intent,upi_reserve").split(",") if m.strip()}
+    return {m.strip() for m in (os.environ.get("SHOPIFY_ACCEPTED_METHODS")
+                                or "card_token,upi_intent,upi_reserve").split(",") if m.strip()}
 
 
 @app.post("/acp/checkout_sessions/{cid}/complete")

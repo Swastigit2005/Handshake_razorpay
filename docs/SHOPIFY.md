@@ -29,8 +29,16 @@ the store admin. Use the Dev Dashboard:
    `warranty_months`.
 3. In the Dev Dashboard, create an app with Admin API scopes `read_products`,
    `write_products`, `read_inventory`, `write_draft_orders`, `read_orders`. Release
-   a version, and install it on the store.
-4. Put the credentials in the server's environment, never in the repository:
+   a version, and install it on the store. If you change scopes later, release a
+   new version and approve the update in the store: until then the installation
+   keeps the old scopes (it can even have none).
+4. In the app's **API access requests**, request **Protected customer data
+   access**: level 1, and for level 2 the Name and Address fields. Draft orders
+   and their shipping rates are protected customer data, so without this every
+   quote fails with "This app is not approved to access the CalculatedDraftOrder
+   object". Apps installed only on development stores need no review
+   ([Shopify docs](https://shopify.dev/docs/apps/launch/protected-customer-data)).
+5. Put the credentials in the server's environment, never in the repository:
 
    ```
    SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
@@ -42,7 +50,7 @@ the store admin. Use the Dev Dashboard:
    grant. The token lasts 24 hours; it is cached, renewed a minute before expiry,
    and renewed once more if Shopify rejects it early. A legacy app's permanent
    `shpat_…` token also works, as `SHOPIFY_ADMIN_TOKEN`.
-5. Restart and open `/shopify`. It shows the connection, the learned spec schema,
+6. Restart and open `/shopify`. It shows the connection, the learned spec schema,
    a **readiness report** (listings missing specs their category carries), the MCP
    address, and a live feed of agent journeys.
 

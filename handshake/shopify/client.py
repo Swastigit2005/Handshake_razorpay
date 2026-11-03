@@ -154,8 +154,14 @@ class ShopifyAdmin:
                 continue
             if errors:
                 msg = "; ".join(e.get("message", "?") for e in errors)[:400]
-                if any((e.get("extensions") or {}).get("code") == "ACCESS_DENIED"
-                       or "Access denied" in e.get("message", "") for e in errors):
+                if "protected-customer-data" in msg or "not approved to access" in msg:
+                    msg = ("Shopify hasn't approved this app for protected customer data, which "
+                           "draft orders and their shipping rates are. In the app's API access "
+                           "requests, request Protected customer data access (level 1, plus "
+                           "Name and Address for level 2). Apps on a development store need no "
+                           "review.")
+                elif any((e.get("extensions") or {}).get("code") == "ACCESS_DENIED"
+                         or "Access denied" in e.get("message", "") for e in errors):
                     msg += (". The app is missing an Admin API scope: add the scopes in the Dev "
                             "Dashboard app's Configuration, release a new version, and approve "
                             "the update in the store")
@@ -176,7 +182,7 @@ class ShopifyAdmin:
             data = self.graphql("""query Products($cursor: String) {
               products(first: 50, after: $cursor, query: "status:active") {
                 pageInfo { hasNextPage endCursor }
-                nodes { id title handle productType tags description(truncateAt: 400)
+                nodes { id title handle productType isGiftCard tags description(truncateAt: 400)
                   variants(first: 25) { nodes { id sku title price inventoryQuantity
                     availableForSale selectedOptions { name value } } }
                   metafields(first: 40) { nodes { namespace key value type } } } } }""",

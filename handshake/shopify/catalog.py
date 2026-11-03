@@ -4,8 +4,10 @@ One record per variant, because a variant is what an agent buys.
 
   sku          the variant's SKU, or `v<numeric id>` when it has none
   category     the product type, as a slug ("Electric Kettle" → electric_kettle)
-  attributes   spec metafields (namespaces SHOPIFY_SPEC_NAMESPACES, default
-               "custom,specs") plus the variant's options (colour, size…)
+  attributes   spec metafields plus the variant's options (colour, size…).
+               Every namespace counts except Shopify's own (global SEO tags,
+               shopify--…) and apps' (app--…); SHOPIFY_SPEC_NAMESPACES="custom,specs"
+               restricts it to a list
   policy       returns_days / warranty_months metafields, when present
   fulfilment   ships_in_days metafield, when present
 
@@ -32,6 +34,17 @@ def _value(raw, kind=""):
     """Metafield values arrive as strings; numbers become numbers."""
     if raw is None:
         return None
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if raw.startswith("{"):                 # dimension / weight / volume / money
+            try:
+                obj = json.loads(raw)
+                if isinstance(obj, dict) and "value" in obj:
+                    return _value(str(obj["value"]))
+                if isinstance(obj, dict) and "amount" in obj:
+                    return _value(str(obj["amount"]))
+            except ValueError:
+                pass
     if kind.startswith("list.") or (isinstance(raw, str) and raw.startswith("[")):
         try:
             return json.loads(raw)
@@ -55,18 +68,30 @@ def _value(raw, kind=""):
     return raw
 
 
+SYSTEM_NAMESPACES = {"global", "seo", "mm-google-shopping", "descriptors", "reviews"}
+
+
 def namespaces():
-    return {n.strip() for n in os.environ.get("SHOPIFY_SPEC_NAMESPACES", "custom,specs").split(",")
-            if n.strip()}
+    """The allowed namespaces, or None for any non-system namespace."""
+    listed = {n.strip() for n in os.environ.get("SHOPIFY_SPEC_NAMESPACES", "").split(",") if n.strip()}
+    return listed or None
+
+
+def _is_spec_namespace(ns, allowed):
+    if allowed is not None:
+        return ns in allowed
+    return not (ns in SYSTEM_NAMESPACES or ns.startswith(("shopify", "app--", "$app")))
 
 
 def to_records(products):
     spaces = namespaces()
     out = []
     for p in products:
+        if p.get("isGiftCard") or slug(p.get("productType")) in ("giftcard", "gift_card"):
+            continue                                  # not something an agent ships
         specs, policy, fulfilment = {}, {}, {}
         for m in (p.get("metafields") or {}).get("nodes", []):
-            if m["namespace"] not in spaces:
+            if not _is_spec_namespace(m["namespace"], spaces):
                 continue
             value = _value(m["value"], m.get("type", ""))
             if m["key"] in POLICY_KEYS:
@@ -86,7 +111,9 @@ def to_records(products):
             title = p["title"] if v.get("title") in (None, "", "Default Title") \
                 else f"{p['title']} – {v['title']}"
             stock = v.get("inventoryQuantity")
-            if stock is None:
+            if stock is None or (stock <= 0 and v.get("availableForSale")):
+                # Untracked inventory (or overselling allowed): Shopify sells it
+                # at any count, so it is in stock.
                 stock = 1 if v.get("availableForSale", True) else 0
             out.append({
                 "sku": (v.get("sku") or "").strip() or f"v{numeric}",

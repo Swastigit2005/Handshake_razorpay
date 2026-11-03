@@ -55,6 +55,9 @@ const SETUP = `<div class="two">
     <li>In the Dev Dashboard, <b>create an app</b>, give it Admin API scopes
       <code>read_products</code>, <code>write_products</code>, <code>read_inventory</code>, <code>write_draft_orders</code>,
       <code>read_orders</code>, <b>release a version</b>, and <b>install it</b> on your development store.</li>
+    <li>In the app's <b>API access requests</b>, request <b>Protected customer data access</b>: level 1, and for
+      level 2 the <b>Name</b> and <b>Address</b> fields. Draft orders and their shipping rates are protected
+      customer data. An app installed only on development stores needs no review.</li>
     <li>From the app's settings, copy the <b>Client ID</b> and <b>Client secret</b>.</li>
     <li>Add them to the server's environment (in <code>.env</code> locally; on Render under Environment). Never paste the secret anywhere else:
       <pre>SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
