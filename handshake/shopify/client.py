@@ -24,6 +24,7 @@ never returned by any endpoint, and never sent anywhere except Shopify.
 
 import json
 import os
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -41,13 +42,29 @@ def configured():
         or (os.environ.get("SHOPIFY_CLIENT_ID") and os.environ.get("SHOPIFY_CLIENT_SECRET"))))
 
 
+def _tls_context():
+    # python.org builds on macOS ship without root certificates; use certifi's
+    # bundle when it is installed (it comes with httpx), else the system store.
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
+_TLS = _tls_context()
+
+
 def _http_post(url, body, headers, timeout):
     req = urllib.request.Request(url, data=body, headers=headers, method="POST")
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=_TLS) as resp:
             return resp.status, resp.read(), dict(resp.headers)
     except urllib.error.HTTPError as exc:
         return exc.code, exc.read(), dict(exc.headers or {})
+    except (urllib.error.URLError, OSError) as exc:
+        reason = getattr(exc, "reason", exc)
+        raise ShopifyError(f"couldn't reach Shopify: {reason}") from None
 
 
 class ShopifyAdmin:
@@ -136,7 +153,13 @@ class ShopifyAdmin:
                 delay *= 2
                 continue
             if errors:
-                raise ShopifyError("; ".join(e.get("message", "?") for e in errors)[:400])
+                msg = "; ".join(e.get("message", "?") for e in errors)[:400]
+                if any((e.get("extensions") or {}).get("code") == "ACCESS_DENIED"
+                       or "Access denied" in e.get("message", "") for e in errors):
+                    msg += (". The app is missing an Admin API scope: add the scopes in the Dev "
+                            "Dashboard app's Configuration, release a new version, and approve "
+                            "the update in the store")
+                raise ShopifyError(msg)
             return data.get("data") or {}
         raise ShopifyError("Shopify kept throttling; try again shortly")
 

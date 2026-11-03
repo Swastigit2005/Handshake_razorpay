@@ -40,8 +40,8 @@ TOOLS = [
      "input_schema": {"type": "object", "properties": {
          "sku": {"type": "string"},
          "quantity": {"type": "integer", "minimum": 1, "default": 1},
-         "pincode": {"type": "string", "description": "6-digit Indian delivery pincode"},
-         "spending_cap": {"type": "number", "description": "the most your user allows, INR"}},
+         "pincode": {"type": "string", "description": "delivery postal code (an Indian pincode, a US ZIP code, ...)"},
+         "spending_cap": {"type": "number", "description": "the most your user allows, in the store's currency"}},
          "required": ["sku", "pincode"], "additionalProperties": False}},
     {"name": "refresh_checkout",
      "description": "Re-quote an open checkout before paying. Returns the current total, "
