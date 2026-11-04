@@ -211,6 +211,12 @@ class ShoppingAgent:
             self.call("POST", f"/checkout_sessions/{self.checkout}/cancel", {})
             raise Abandon(f"It ships in {ships} days; my owner needs it within {limit}.",
                           "slow:ships_in_days")
+        if first > self.cap:
+            # The listed price fitted; tax took the first quote over. No later
+            # re-quote can make this basket allowed, so stop now.
+            self.call("POST", f"/checkout_sessions/{self.checkout}/cancel", {})
+            raise Abandon(f"₹{first:,.2f} with tax is over my ₹{self.cap:,.0f} spending cap. "
+                          "I'm not allowed to exceed it.", "A4")
         status, body = self.call("POST", f"/checkout_sessions/{self.checkout}", {})
         total = body["total"]
         drift = (total - first) / first if first else 0
