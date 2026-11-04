@@ -19,6 +19,7 @@ import secrets
 import uuid
 
 from ..taxonomy import INTERVENTIONS
+from . import money
 
 
 def _price_with_tax(p, qty=1):
@@ -72,8 +73,51 @@ def _i03(dg, j, ctx):
              "locked_total": d["quoted"], "ttl_minutes": ttl},
             {"type": "price_lock", "checkout_id": j["checkout_id"],
              "locked_total": d["quoted"], "ttl_minutes": ttl,
-             "message": f"The original quote of ₹{d['quoted']:,.2f} is honoured for {ttl} minutes."},
+             "message": f"The original quote of {money.fmt(d['quoted'], d.get('currency'))} is "
+                        f"honoured for {ttl} minutes."},
             concession)
+
+
+def passed_over(dg, j, ctx):
+    """What the agent's choice reveals, when it picked an item listed above its
+    cap while cheaper ones of the same kind were in front of it: it was not
+    choosing on price. Returns (skipped skus, {facet: floor}) — the cheaper
+    items it saw and skipped, and, for each facet on which its pick beat all
+    of them, the value an alternative has to beat too. Empty when the pick
+    looked affordable (tax or shipping pushed it over), so any cheaper item is
+    a fair offer."""
+    from .detectors import LOWER_IS_BETTER, current_attempt, facets
+    d = dg["detail"]
+    cap, me = d.get("declared_cap"), ctx["product"](d.get("sku", ""))
+    if cap is None or not me or me.get("price", 0) <= cap or "events" not in ctx:
+        return set(), {}
+    seen = set()
+    for e in current_attempt(ctx["events"]())[0]:
+        if e["type"] == "feed.read":
+            seen.update(i.get("sku") for i in (e.get("response") or {}).get("items") or [])
+        elif e["type"] == "product.view" and e.get("http_status") == 200:
+            seen.add(e.get("sku") or (e.get("request") or {}).get("sku"))
+    skipped = []
+    for sku in seen - {me["sku"], None}:
+        p = ctx["product"](sku)
+        if p and p.get("category") == me.get("category") and p.get("price", 0) < me["price"]:
+            skipped.append(p)
+    mine, floors = facets(me), {}
+    for facet, value in mine.items():
+        theirs = [facets(p).get(facet) for p in skipped]
+        theirs = [v for v in theirs if v is not None]
+        lower = facet in LOWER_IS_BETTER
+        if theirs and all((value < v) if lower else (value > v) for v in theirs):
+            floors[facet] = (min if lower else max)(theirs)
+    return {p["sku"] for p in skipped}, floors
+
+
+def _meets(p, floors):
+    from .detectors import LOWER_IS_BETTER, facets
+    have = facets(p)
+    return all(have.get(f) is not None and
+               ((have[f] < v) if f in LOWER_IS_BETTER else (have[f] > v))
+               for f, v in floors.items())
 
 
 def _i04(dg, j, ctx):
@@ -82,9 +126,10 @@ def _i04(dg, j, ctx):
     me = ctx["product"](d.get("sku", ""))
     if cap is None or not me:
         return None
+    skipped, floors = passed_over(dg, j, ctx)
     fits = [p for p in ctx["catalog"]()
             if p.get("category") == me.get("category") and p.get("stock", 1) > 0
-            and _price_with_tax(p) <= cap]
+            and _price_with_tax(p) <= cap and p["sku"] not in skipped and _meets(p, floors)]
     if not fits:
         return None
     # Closest to what the agent wanted: the most capable item that still fits.
@@ -94,8 +139,9 @@ def _i04(dg, j, ctx):
             {"type": "compliant_basket", "sku": best["sku"], "title": best.get("title"),
              "qty": 1, "total": total, "declared_cap": cap,
              "attributes": best.get("attributes"),
-             "message": f"{best.get('title', best['sku'])} at ₹{total:,.2f} fits under your "
-                        f"₹{cap:,.0f} cap."},
+             "message": f"{best.get('title', best['sku'])} at "
+                        f"{money.fmt(total, best.get('currency') or d.get('currency'))} fits under "
+                        f"your {money.fmt(cap, best.get('currency') or d.get('currency'), 0)} cap."},
             0.0)
 
 
@@ -220,6 +266,19 @@ def propose(dg, journey, ctx):
                 "merchant_change": f"{sku}'s {nice} ({served}) is the weakest in its "
                                    "category; agents that check it walk away."}
 
+    if dg["cause"] == "A4" and d.get("declared_cap") is not None:
+        me = ctx["product"](sku) or {}
+        _, floors = passed_over(dg, journey, ctx)
+        cur = d.get("currency") or me.get("currency")
+        cap, total = d["declared_cap"], d.get("basket_total")
+        need = ", ".join(f"{f.replace('_', ' ')} beyond {v}" for f, v in floors.items())
+        gap = f" ({money.fmt(total - cap, cur)} off)" if total is not None else ""
+        return {"action": "information", "source": "rules", "message": "",
+                "merchant_change":
+                    f"Nothing in stock fits this agent's {money.fmt(cap, cur, 0)} cap"
+                    + (f" and what it chose {me.get('title', sku)} for ({need})" if need else "")
+                    + f". {me.get('title', sku)} at {money.fmt(cap, cur)}{gap} would have sold."}
+
     if dg["cause"] == "N1":
         text = f"{d.get('error', '')} {d.get('detail', '')}".lower()
         if any(w in text for w in ("payment", "instrument", "method", "upi", "card")):
@@ -235,7 +294,8 @@ def propose(dg, journey, ctx):
             if alt:
                 return {"action": "alternative_product", "sku": alt["sku"], "source": "rules",
                         "message": f"{sku} sold out at checkout. {alt.get('title', alt['sku'])} "
-                                   f"({alt['sku']}) is in stock at ₹{alt.get('price', 0):,.0f}.",
+                                   f"({alt['sku']}) is in stock at "
+                                   f"{money.fmt(alt.get('price', 0), alt.get('currency'), 0)}.",
                         "merchant_change": f"{sku} was listed as available but refused at "
                                            "checkout. Sync stock to the feed."}
         return {"action": "retry", "source": "rules",

@@ -238,3 +238,50 @@ def test_real_catalogue_quirks_are_read():
     assert len(recs) == 1
     assert recs[0]["attributes"] == {"snowboard_length": 159.0, "battery_hours": 30}
     assert recs[0]["stock"] == 1                        # untracked: for sale at 0
+
+
+def test_without_order_approval_the_store_runs_in_catalogue_mode(gateway):
+    """What a Dev Dashboard app on a real store got: catalogue reads work, but
+    Shopify refuses draft orders as protected customer data."""
+    fake = gateway["fake"]
+    fake.orders_approved = False
+    a = Agent(gateway["base"])
+    co = a.tool("create_checkout", sku="RG-OE", pincode="10001", spending_cap=5000)
+    assert co["status"] == 200 and co["total"] == 3999.0 and "not in Shopify" in co["note"]
+    fake.set_price("RG-OE", 4299)                         # still the live Shopify price
+    assert a.tool("refresh_checkout", checkout_id=co["checkout_id"])["total"] == 4299.0
+    paid = a.tool("pay", checkout_id=co["checkout_id"], payment_method="card_token")
+    assert paid["status"] == "captured" and paid["recorded_by"] == "handshake"
+    assert paid["ref"].startswith("HS-") and not fake.orders
+    _, _, s = http("GET", gateway["base"] + "/shopify/api/status")
+    assert s["orders"].startswith("catalogue mode")
+    assert journey_of(gateway, lambda j: j["status"] == "converted")
+    fake.orders_approved = True                           # approval switches it back
+    co = a.tool("create_checkout", sku="RG-OE", pincode="10001", spending_cap=6000)
+    assert "note" not in co
+    _, _, s = http("GET", gateway["base"] + "/shopify/api/status")
+    assert s["orders"] == "written to Shopify"
+
+
+def test_a_cap_breach_is_not_answered_with_an_item_the_agent_passed_over(gateway):
+    """From Claude's run on a real store: it saw every pair, chose the one listed
+    above its cap for a spec the cheaper ones lacked, and stopped at the cap.
+    Offering it a cheaper pair it had already skipped is no recovery."""
+    a = Agent(gateway["base"])
+    a.tool("search_products", query="headphones")          # sees all three
+    co = a.tool("create_checkout", sku="RG-ST", pincode="560034", spending_cap=4000)
+    a.tool("cancel_checkout", checkout_id=co["checkout_id"], reason="over my budget")
+    j = journey_of(gateway, lambda j: j["status"] not in ("open",))
+    assert j["diagnosis"]["cause"] == "A4"
+    # Every cheaper pair was one it skipped (each has a smaller driver), so no
+    # compliant basket is built; the next rung asks its owner to raise the cap.
+    assert "I-04" in j["verdict"]["unbuildable"]
+    assert j["directive"]["intervention"] == "I-05"
+    from handshake.live import directives, store
+    dg, mid = j["diagnosis"], gateway["gw"].S.merchant_id
+    ctx = {"product": lambda sku: store.get_product(mid, sku),
+           "events": lambda: store.journey_events(mid, j["journey_id"])}
+    skipped, floors = directives.passed_over(dg, j, ctx)
+    assert skipped == {"RG-OE", "RG-LT"} and floors == {"driver_mm": 45}
+    note = directives.propose(dg, j, ctx)["merchant_change"]
+    assert "driver mm beyond 45" in note and "₹4,000" in note and "would have sold" in note

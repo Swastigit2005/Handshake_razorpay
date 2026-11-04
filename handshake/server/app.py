@@ -726,7 +726,8 @@ def _agent_feed(merchant_id, limit=20):
                         "action": (j["directive"] or {}).get("intervention")
                         or vd.get("intervention_id") or None,
                         "held_by": vd.get("binding_rule") or None,
-                        "proposal": (vd.get("proposal") or {}).get("message")})
+                        "proposal": (vd.get("proposal") or {}).get("message")
+                        or (vd.get("proposal") or {}).get("merchant_change")})
             if len(out) >= limit:
                 break
     return {"journeys": out, "connected_sessions": len(agents)}

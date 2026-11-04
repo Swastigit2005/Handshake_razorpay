@@ -36,6 +36,11 @@ class ShopifyError(RuntimeError):
     pass
 
 
+class ProtectedDataDenied(ShopifyError):
+    """Shopify hasn't approved the app for protected customer data, which draft
+    orders and orders are. Catalogue reads still work."""
+
+
 def configured():
     return bool(os.environ.get("SHOPIFY_STORE_DOMAIN") and (
         os.environ.get("SHOPIFY_ADMIN_TOKEN")
@@ -155,13 +160,11 @@ class ShopifyAdmin:
             if errors:
                 msg = "; ".join(e.get("message", "?") for e in errors)[:400]
                 if "protected-customer-data" in msg or "not approved to access" in msg:
-                    msg = ("Shopify hasn't approved this app for protected customer data, which "
-                           "draft orders and their shipping rates are. In the app's API access "
-                           "requests, request Protected customer data access (level 1, plus "
-                           "Name and Address for level 2). Apps on a development store need no "
-                           "review.")
-                elif any((e.get("extensions") or {}).get("code") == "ACCESS_DENIED"
-                         or "Access denied" in e.get("message", "") for e in errors):
+                    raise ProtectedDataDenied(
+                        "Shopify hasn't approved this app for protected customer data, which "
+                        "draft orders and orders are (" + msg[:160] + ")")
+                if any((e.get("extensions") or {}).get("code") == "ACCESS_DENIED"
+                       or "Access denied" in e.get("message", "") for e in errors):
                     msg += (". The app is missing an Admin API scope: add the scopes in the Dev "
                             "Dashboard app's Configuration, release a new version, and approve "
                             "the update in the store")

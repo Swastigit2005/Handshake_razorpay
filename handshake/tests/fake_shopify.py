@@ -42,6 +42,7 @@ class FakeShopify:
         self.drafts = {}
         self.spec_writes = []
         self.permitted = True
+        self.orders_approved = True       # False: refuse orders as protected customer data
 
     # --- helpers a test uses to play the merchant ---
 
@@ -80,6 +81,12 @@ class FakeShopify:
             return 401, b'{"errors":"[API] Invalid API key or access token"}', {}
         req = json.loads(body)
         op = re.search(r"(query|mutation)\s+(\w+)", req["query"]).group(2)
+        if not self.orders_approved and op in ("Calc", "DraftCreate", "DraftComplete"):
+            obj = "CalculatedDraftOrder" if op == "Calc" else "DraftOrder"
+            return 200, json.dumps({"errors": [{
+                "message": f"This app is not approved to access the {obj} object. See "
+                           "https://shopify.dev/docs/apps/launch/protected-customer-data for more details.",
+                "extensions": {"code": "ACCESS_DENIED"}}]}).encode(), {}
         data = getattr(self, "op_" + op)(req.get("variables") or {})
         return 200, json.dumps({"data": data}).encode(), {}
 

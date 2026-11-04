@@ -310,6 +310,7 @@ def gate(merchant, journey_id, dg):
                            basket_value=j["basket_value"])
     hour = _local_hour(settings_for(merchant)["timezone"])
     ctx = _context(mid, merchant)
+    ctx["events"] = lambda: store.journey_events(mid, journey_id)
 
     excluded, unbuildable, all_checks = [], [], []
     while True:

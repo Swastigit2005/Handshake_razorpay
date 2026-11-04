@@ -10,6 +10,12 @@ of the store, backed by the real store through the Admin API:
     POST /shopify/acp/checkout_sessions/{id} re-quote, live: change a price in
                                              Shopify admin and the drift is real
     POST …/{id}/complete                     a real (test) order in your admin
+
+Orders need Shopify's protected-customer-data approval. Until the app has it,
+the gateway runs in catalogue mode: quotes are the live variant price read from
+Shopify (plus SHOPIFY_TAX_RATE and SHOPIFY_FLAT_SHIPPING, both default 0), and a
+paid checkout is recorded by Handshake, not written to Shopify. Every response
+says which. Shopify is asked first each time, so approval switches it back.
     POST …/{id}/cancel
     GET  /shopify/acp/reoffers/{ref}         Handshake's re-offer, if any
 
@@ -32,7 +38,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from ..live import store
 from ..sdk import HandshakeClient, HandshakeMiddleware, WebhookSignatureError, verify_webhook
 from . import catalog as cat
-from .client import ShopifyAdmin, ShopifyError, configured
+from .client import ProtectedDataDenied, ShopifyAdmin, ShopifyError, configured
 
 log = logging.getLogger("handshake.shopify")
 
@@ -67,6 +73,7 @@ class State:
         self.api_key = None
         self.webhook_secret = ""
         self.sessions = {}
+        self.orders_blocked = ""          # Shopify's refusal, while in catalogue mode
         self.log = {}
 
     def note(self, jid, line, kind="http"):
@@ -139,7 +146,23 @@ def bootstrap(base_url, transport=None):
         S.merchant_id, S.api_key, S.webhook_secret = mid, key, m["webhook_secret"]
         S.synced_at, S.pushed = 0.0, None
         refresh(force=True)
+        _probe_orders()
         return key
+
+
+def _probe_orders():
+    """Ask Shopify for one quote, so the status page knows from the start
+    whether orders can be written (they need protected-customer-data approval)."""
+    r = next((r for r in S.records.values() if r["available"]), None)
+    if r is None:
+        return
+    try:
+        S.admin.quote(r["shopify"]["variant_id"], 1, _address(""))
+        S.orders_blocked = ""
+    except ProtectedDataDenied as exc:
+        S.orders_blocked = str(exc)
+    except ShopifyError:
+        pass
 
 
 def refresh(force=False):
@@ -215,8 +238,31 @@ def product(sku: str, x_agent_journey: str = Header(default="")):
     return cat.public(r)
 
 
+CATALOGUE_NOTE = ("estimated from the live Shopify price; Shopify has not approved this app "
+                  "for orders yet, so the order is recorded by Handshake, not in Shopify")
+
+
+def _estimate(r, qty):
+    """Catalogue mode: the variant's live price, re-read from Shopify now."""
+    refresh(force=True)
+    r = S.records.get(r["sku"], r)
+    sub = round(r["price"] * qty, 2)
+    tax = round(sub * float(os.environ.get("SHOPIFY_TAX_RATE") or 0), 2)
+    shipping = round(float(os.environ.get("SHOPIFY_FLAT_SHIPPING") or 0), 2)
+    return {"subtotal": sub, "tax": tax, "shipping": shipping,
+            "total": round(sub + tax + shipping, 2), "currency": S.shop.get("currencyCode"),
+            "shipping_method": "Standard", "shipping_handle": None, "estimate": True}
+
+
 def _quote(r, qty, pincode):
-    calc = S.admin.quote(r["shopify"]["variant_id"], qty, _address(pincode))
+    try:
+        calc = S.admin.quote(r["shopify"]["variant_id"], qty, _address(pincode))
+    except ProtectedDataDenied as exc:
+        if not S.orders_blocked:
+            log.warning("shopify orders blocked, catalogue mode: %s", exc)
+        S.orders_blocked = str(exc)
+        return _estimate(r, qty)
+    S.orders_blocked = ""
     rates = sorted(calc.get("availableShippingRates") or [],
                    key=lambda x: float((x.get("price") or {}).get("amount") or 0))
     ships = any(li.get("requiresShipping", True) for li in calc.get("lineItems") or [{}])
@@ -262,6 +308,8 @@ async def create_session(request: Request, x_agent_journey: str = Header(default
            "fulfilment": {"ships_in_days": r["fulfilment"].get("ships_in_days"),
                           "method": q["shipping_method"]},
            **{k: q[k] for k in ("subtotal", "tax", "shipping", "total", "currency")}}
+    if q.get("estimate"):
+        out["note"] = CATALOGUE_NOTE
     S.note(jid, f"POST /acp/checkout_sessions → 200 {cid} total {q['total']:,.2f}")
     return out
 
@@ -309,6 +357,14 @@ async def complete_session(cid: str, request: Request):
         order = S.admin.place_order(r["shopify"]["variant_id"], s["qty"], _address(s["pincode"]),
                                     s["quote"].get("shipping_handle"),
                                     note=f"Placed by an AI agent via Handshake ({jid})")
+    except ProtectedDataDenied as exc:
+        S.orders_blocked = str(exc)
+        total = s["locked_total"] if s["locked_total"] is not None else s["quote"]["total"]
+        ref = f"HS-{uuid.uuid4().hex[:6].upper()}"
+        S.note(jid, f"POST …/{cid}/complete → 200 recorded {ref} {total:,.2f} (not in Shopify)")
+        S.sessions.pop(cid, None)
+        return {"session_id": cid, "status": "captured", "ref": ref, "total": total,
+                "recorded_by": "handshake", "note": CATALOGUE_NOTE}
     except ShopifyError as exc:
         S.note(jid, f"POST …/{cid}/complete → 502 {exc}")
         return JSONResponse({"error": "gateway_error", "detail": str(exc)[:200]}, 502)
@@ -393,6 +449,8 @@ def status():
                    schema=S.schema, synced_at=S.synced_at, api_calls=S.admin.calls,
                    auth_mode=S.admin.auth_mode,
                    accepted_methods=sorted(accepted_methods()),
+                   orders=("catalogue mode: " + S.orders_blocked) if S.orders_blocked
+                   else "written to Shopify",
                    gaps=cat.gaps(S.records.values(), S.schema))
     return out
 

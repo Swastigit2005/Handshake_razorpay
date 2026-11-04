@@ -96,6 +96,9 @@ async function load() {
         <span>Catalogue</span><span>${s.products} products, ${s.variants} variants · ${esc(s.categories.join(", ") || "no product types")}</span>
         <span>Currency</span><span>${esc(s.currency)}</span>
         <span>Access</span><span>${esc(s.auth_mode || "")}</span>
+        <span>Orders</span><span>${s.orders && s.orders.startsWith("catalogue")
+          ? `<b style="color:var(--amber, #B7791F)">Catalogue mode</b>: Shopify hasn't approved this app for protected customer data, so quotes use the live Shopify price and paid orders are recorded by Handshake, not in your admin. <span class="small">${esc(s.orders.slice(17, 260))}</span>`
+          : esc(s.orders || "")}</span>
         <span>Payment methods</span><span>${esc(s.accepted_methods.join(", "))}</span>
         <span>Required specs</span><span>${Object.entries(s.schema).map(([k, v]) => `<b>${esc(k)}</b>: ${esc(v.join(", "))}`).join("<br>") || "<span class='muted'>none learned yet: give at least two products of a type the same spec metafields</span>"}</span>
       </div><div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">

@@ -14,6 +14,8 @@ import re
 import time
 import uuid
 
+from . import money
+
 TYPES = (
     "feed.read",            # agent listed products
     "product.view",         # agent fetched one product record
@@ -120,15 +122,16 @@ def describe(ev):
         total = res.get("total")
         cap = req.get("declared_cap")
         return (f"opened checkout {ev.get('checkout_id') or res.get('session_id', '')}"
-                f" at ₹{total:,.2f}" if isinstance(total, (int, float)) else "opened checkout") + \
-            (f" (cap ₹{cap:,.0f})" if isinstance(cap, (int, float)) else "")
+                f" at {money.fmt(total, res.get('currency'))}" if isinstance(total, (int, float))
+                else "opened checkout") + \
+            (f" (cap {money.fmt(cap, res.get('currency'), 0)})" if isinstance(cap, (int, float)) else "")
     if t == "checkout.update":
         total = res.get("total")
-        return f"re-quoted checkout at ₹{total:,.2f}" if isinstance(total, (int, float)) \
+        return f"re-quoted checkout at {money.fmt(total, res.get('currency'))}" if isinstance(total, (int, float)) \
             else "re-quoted checkout"
     if t == "checkout.complete":
         if st == 200:
-            return f"paid ₹{res.get('total', 0):,.2f}"
+            return f"paid {money.fmt(res.get('total', 0), res.get('currency'))}"
         code = res.get("reason_code") or res.get("error") or ""
         return f"payment attempt → {st} {code}".strip()
     if t == "checkout.cancel":

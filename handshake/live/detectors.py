@@ -33,6 +33,7 @@ confidence 0, and R-10 routes the journey to a human instead of guessing.
 """
 
 from ..taxonomy import CAUSES, UNKNOWN
+from . import money
 from .events import STAGE, STAGE_ORDER, describe
 
 RAIL_CODES = {
@@ -231,11 +232,12 @@ def detect_quote_drift(tr, ctx):
     if not isinstance(after, (int, float)) or abs(after - before) <= 0.01:
         return []
     pct = (after - before) / before if before else 0.0
+    cur = money.of(last["response"], created["response"])
     paid_after = bool(tr.after(last, "checkout.complete"))
     score = 0.9 if after > before and not paid_after else (0.2 if paid_after else 0.3)
     return [Hypothesis(
         "A3", score,
-        f"The price moved from ₹{before:,.2f} to ₹{after:,.2f} ({pct:+.1%}) between the quote "
+        f"The price moved from {money.fmt(before, cur)} to {money.fmt(after, cur)} ({pct:+.1%}) between the quote "
         "and the re-quote, and the agent stopped right after.",
         [_ev(created, "first quote", observed=before),
          _ev(last, "re-quote", observed=after, expected=before)],
@@ -257,13 +259,14 @@ def detect_cap(tr, ctx):
         return []
     paid_after = bool(tr.after(last, "checkout.complete"))
     first = created["response"].get("total")
+    cur = money.of(last["response"], created["response"])
     if isinstance(first, (int, float)) and first <= cap and not paid_after:
         # The first quote fitted. The cap was breached only because the price
         # moved, so the price move is the root cause and a price lock fixes both.
         return [Hypothesis(
             "A4", 0.55,
-            f"The basket went over the ₹{cap:,.2f} cap, but only after the re-quote: the "
-            f"first quote (₹{first:,.2f}) fitted. This is a consequence of the price move, "
+            f"The basket went over the {money.fmt(cap, cur)} cap, but only after the re-quote: the "
+            f"first quote ({money.fmt(first, cur)}) fitted. This is a consequence of the price move, "
             "not a separate cause.",
             [_ev(created, "first quote within the cap", observed=first, expected=f"≤ {cap}"),
              _ev(last, "re-quote above the cap", observed=total)],
@@ -271,11 +274,12 @@ def detect_cap(tr, ctx):
              "sku": created.get("sku") or created["request"].get("sku", "")})]
     return [Hypothesis(
         "A4", 0.2 if paid_after else 0.93,
-        f"The basket came to ₹{total:,.2f} against a spending cap of ₹{cap:,.2f} that the "
+        f"The basket came to {money.fmt(total, cur)} against a spending cap of {money.fmt(cap, cur)} that the "
         "agent's owner set. The agent is not allowed to go over it.",
         [_ev(created, "spending cap declared on checkout", observed=cap),
          _ev(last, "basket total above the cap", observed=total, expected=f"≤ {cap}")],
         {"declared_cap": cap, "basket_total": total, "over_by": round(total - cap, 2),
+         "currency": cur,
          "sku": created.get("sku") or created["request"].get("sku", "")})]
 
 

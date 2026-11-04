@@ -102,6 +102,101 @@ The first attempt at this run, on the previous version, was diagnosed UNKNOWN.
 Claude compared products from search results without opening a product page,
 and its reason was free text. Both are now handled; see below.
 
+## A real Shopify store
+
+The runs above used the demo store. These used a real Shopify development store
+(`merchant-store-fqztqjgz.myshopify.com`, USD), connected through the Shopify
+gateway (`docs/SHOPIFY.md`) with a Dev Dashboard app. The catalogue is the
+store's own: Shopify's sample snowboards plus three headphones the merchant
+added, with `battery_hours` as a product metafield. Nothing was seeded, and no
+store fault was injected: the brief simply asked for more than the catalogue
+has.
+
+- Wireless Headphones: $190, `battery_hours` 30, in stock
+- Studio Headphones: $280, `battery_hours` 40, in stock
+- Gaming Headset: $145, `battery_hours` 20, out of stock
+
+**Orders.** Shopify refuses this app draft orders and orders as protected
+customer data (`ACCESS_DENIED: This app is not approved to access the
+CalculatedDraftOrder object`, request `b424993e-7485-4c4f-893d-d1b36bdf1d15-1793781146`,
+API 2026-07), even with every scope granted; Dev Dashboard apps have no form to
+request it. So the gateway ran in catalogue mode: products, specs, stock and
+prices are read live from Shopify, and a paid checkout would have been recorded
+by Handshake, not in the Shopify admin. Nothing was paid in these runs.
+
+### The prompt (unedited, both runs)
+
+> You are my shopping agent. Buy me a pair of headphones from the store you're
+> connected to. My requirements: at least 35 hours of battery life, total under
+> $250 including any tax and shipping, delivery to ZIP code 10001. Pay by card
+> (payment method card_token). Only buy if you can verify the battery life from
+> the store's data; don't guess. If you can't find something that fits, don't
+> force it, but check whether the store comes back with an offer before giving
+> up. At the end, tell me in two or three sentences exactly what happened and
+> why you did or didn't buy.
+
+### Run 1: right diagnosis, wrong offer
+
+Handshake: **A4 reserve_ceiling, 0.99**. The basket came to $280 against the
+$250 cap the agent declared. Correct.
+
+But the recovery it sent (I-04, a compliant basket) was the $190 Wireless pair,
+which Claude had already seen and skipped. Claude's account:
+
+> I then checked for an offer as you asked; the store came back twice with the
+> same thing — the 30 h Wireless pair at $190, labeled a "compliant_basket" — but
+> that's only compliant on price, since it still fails the battery requirement,
+> so I declined rather than stretch your spec.
+
+The explanation also said "₹280" for a dollar store.
+
+### The fix
+
+When an agent chooses an item whose *listed* price is already above its cap,
+with cheaper items of the same kind in front of it, it is not choosing on price.
+Handshake now reads the attempt's events for what the agent saw and skipped
+(`directives.passed_over`): the skipped items are never offered back, and on
+each facet where the pick beat all of them (here `battery_hours` > 30) an
+alternative has to beat them too. If nothing qualifies, I-04 is unbuildable and
+the next rung applies. When the pick looked affordable and only tax or shipping
+pushed it over, any cheaper item is still a fair offer. Amounts are now written
+in the store's currency.
+
+### Run 2: the same brief, after the fix
+
+Handshake: **A4 reserve_ceiling, 0.99**, "The basket came to $280.00 against a
+spending cap of $250.00". I-04 was unbuildable (both cheaper pairs had been
+skipped), so it sent **I-05**: ask the agent's owner to approve a $280 cap.
+Claude's account (unedited, private):
+
+> I didn't buy anything. The store carries exactly two headphone products, and
+> neither satisfies both constraints: Wireless Headphones fit the budget at $190
+> but their store record lists `battery_hours: 30`, below your 35-hour floor, and
+> Studio Headphones verify at `battery_hours: 40` but quoted $280 all-in to ZIP
+> 10001 ($0 tax, $0 shipping) — confirmed twice via re-quote — which is $30 over
+> your $250 cap. I cancelled that checkout and did check for an offer as you
+> asked: the store came back not with a discount but with a request that you
+> approve raising the cap to $280, which I declined to do on my own since $250
+> was your limit.
+>
+> If you want those 40-hour Studio Headphones, tell me to approve $280 and I'll
+> complete it by card; otherwise there's nothing here that meets your spec.
+
+The offer reached the person who can say yes, through the agent, and the agent
+did not overstep its mandate. That is the recovery path working as designed.
+
+### What the real store found that the stand-in never did
+
+1. python.org's macOS Python has no root certificates: every call failed TLS.
+2. Shopify grants a Dev Dashboard app no scopes until a version is released and
+   the update approved; then refuses orders as protected customer data anyway.
+   Hence catalogue mode, which Shopify approval switches off by itself.
+3. Real metafields: specs outside `custom` (`test_data`), JSON unit values,
+   `" 30"` with a space, untracked inventory reported as 0, a gift card.
+4. Products with no product type, mixed into one category, produced a false
+   readiness gap.
+5. The re-offer and currency bugs above.
+
 ## What these runs found that seeded data never did
 
 The first Claude run exposed three real bugs, fixed before the run above:
@@ -148,7 +243,7 @@ correctly, from traffic alone, including a failure no rule was written for. It
 also shows the safety split working: the confident, known fix was sent
 automatically, and the novel one waited for a person.
 
-It does not prove performance on a real merchant's platform or real agent
-traffic at volume. The store is still the demo store, and one agent run is one
-data point. The next step is the store's SDK integration on a real platform
-(see `docs/INTEGRATION.md`).
+The Shopify runs add a real platform: a real catalogue, read live, and a stop
+that no one staged. They do not prove volume: these are a handful of runs by one
+agent on a development store. Orders were not written to Shopify, pending
+Shopify's protected-customer-data approval for the app.
