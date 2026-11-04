@@ -267,6 +267,11 @@ def test_a_cap_breach_is_not_answered_with_an_item_the_agent_passed_over(gateway
     """From Claude's run on a real store: it saw every pair, chose the one listed
     above its cap for a spec the cheaper ones lacked, and stopped at the cap.
     Offering it a cheaper pair it had already skipped is no recovery."""
+    # I-05 asks a person, so R-09 holds it during quiet hours (21-9 in the
+    # merchant's timezone). Switch them off, or the result depends on the clock.
+    _, _, sess = http("GET", gateway["base"] + "/shopify/api/session")
+    http("PATCH", gateway["base"] + "/v1/policy", {"quiet_hours": [24, 0]},
+         {"Authorization": "Bearer " + sess["api_key"]})
     a = Agent(gateway["base"])
     a.tool("search_products", query="headphones")          # sees all three
     co = a.tool("create_checkout", sku="RG-ST", pincode="560034", spending_cap=4000)
