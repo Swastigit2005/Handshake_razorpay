@@ -239,7 +239,7 @@ async function overview(v) {
     <div class="card"><div class="hd"><h3>Latest shoppers</h3><div class="sp"></div><a class="small" href="#" id="alljs">See all →</a></div><div class="bd">
       ${(recent.journeys || []).map(j => `<div class="recent" data-j="${esc(j.journey_id)}">
         <span class="chip st-${esc(j.status)}">${esc(sl(j.status))}</span>
-        <div><div>${j.cause ? esc(plain(j.cause, j.cause_name)) : j.status === "converted" ? "Bought, nothing to explain" : "Still shopping"}</div>
+        <div><div>${j.status === "converted" ? "Bought" : j.cause ? esc(plain(j.cause, j.cause_name)) : "Still shopping"}</div>
         <div class="small">${ago(j.last_event_at)} · ${esc(j.sku || "")}</div></div>
         <span class="num">${inr(j.status === "recovered" ? j.recovered_value : j.basket_value)}</span></div>`).join("")
         || `<div class="empty">Nobody yet. <a href="/demo">Send a shopper</a>.</div>`}
