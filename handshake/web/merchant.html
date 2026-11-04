@@ -31,7 +31,7 @@
 .kpi.g .v{color:var(--green)} .kpi.r .v{color:var(--red)} .kpi.a .v{color:var(--amber)}
 .two{display:grid;grid-template-columns:1.4fr 1fr;gap:14px}
 @media(max-width:980px){.two{grid-template-columns:1fr}}
-.causerow{display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:10px;align-items:center;
+.causerow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;
   padding:7px 0;border-bottom:1px solid var(--line2);font-size:13.5px}
 .causerow .c{font-family:var(--fm);font-weight:600;font-size:12.5px}
 .causerow .num{white-space:nowrap}
@@ -70,32 +70,47 @@ pre{background:var(--navy);color:#DCE6FF;padding:14px 16px;border-radius:var(--r
   border:1px solid var(--line);background:#fff;cursor:pointer}
 .ks[aria-pressed="true"]{background:var(--red);border-color:var(--red);color:#fff}
 .small{font-size:13px;color:var(--tx2)}
+.intro{margin:6px 0 0;color:var(--tx2);max-width:70ch;font-size:14.5px}
+.tabs{align-items:center}
+.tabs .sp{flex:1}
+.tabs .morelbl{font-size:12.5px;color:var(--tx3);padding:0 2px 0 10px}
+.tabs button.minor{font-size:13px;padding:10px 8px;color:var(--tx3)}
+.code{font-family:var(--fm);font-size:11px;color:var(--tx3);background:var(--bg3);border-radius:4px;padding:1px 5px;margin-left:4px;font-weight:500}
+.recent{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line2);cursor:pointer}
+.recent:hover{background:var(--bg2)}
+.recent:last-of-type{border-bottom:0}
+.trust{margin:12px 0 0;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.key{display:inline-block;width:9px;height:9px;border-radius:2px;margin:0 3px 0 8px;vertical-align:-1px}
+.key.g{background:var(--green-lt)} .key.r{background:var(--red-100)}
 </style>
 </head>
 <body>
 <nav class="nav"><div class="shell">
   <a class="mark" href="/"><svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#050505"/><path d="M11 9v14M11 9h4a3.5 3.5 0 0 1 0 7h-4" stroke="#4287FF" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M21 23V9M21 23h-4a3.5 3.5 0 0 1 0-7h4" stroke="#00BD6E" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>Handshake</a>
   <div class="navlinks">
-    <a href="/">Overview</a><a href="/demo">Live demo</a><a class="on" href="/merchant">Merchant dashboard</a>
-    <a href="/shop/">Demo store</a><a href="/console">Simulation lab</a><a href="/docs">API</a>
+    <a href="/">Overview</a><a href="/demo">Try it</a><a class="on" href="/merchant">Merchant view</a>
   </div>
   <div class="sp"></div><button class="btn sec sm" id="logout" hidden>Sign out</button>
 </div></nav>
 
 <main class="shell" id="app">
-  <div class="card login" id="login">
+  <div class="card login" id="login" hidden>
     <h1>Merchant dashboard</h1>
     <p>Every agent journey on your store: which ones stopped, the evidence for why, what the rules allowed, and
     what came back. Sign in with your Handshake API key.</p>
     <div class="row"><input id="key" placeholder="hsk_live_…" autocomplete="off" spellcheck="false">
     <button class="btn" id="signin">Sign in</button></div>
     <div class="row"><button class="btn sec" id="sandbox">Use the sandbox store (Kaveri Home &amp; Tech)</button>
-      <button class="btn sec" id="shopifybtn">Use the connected Shopify store</button></div>
+      <button class="btn sec" id="shopifybtn" hidden>Use the connected Shopify store</button></div>
     <div class="err" id="loginerr"></div>
     <p class="small" style="margin-top:18px">Your key stays in this browser. It is sent only to this server's
     <code>/v1</code> API.</p>
   </div>
 </main>
+<footer class="shell sitefoot">More: <a href="/shop/">the demo store</a> · <a href="/shop/admin">break the store</a> ·
+<a href="/shopify/">Shopify connector</a> · <a href="/console">simulation lab</a> · <a href="/docs">API reference</a> ·
+<a href="https://github.com/Swastigit2005/Handshake_razorpay">source on GitHub</a></footer>
+
 
 <script>
 const $ = s => document.querySelector(s);
@@ -105,6 +120,18 @@ const inr2 = v => "₹" + Number(v || 0).toLocaleString("en-IN", {minimumFractio
 const ago = t => { const s = Math.max(0, Date.now() / 1000 - t); return s < 60 ? `${s | 0}s ago` : s < 3600 ? `${s / 60 | 0}m ago` : s < 86400 ? `${s / 3600 | 0}h ago` : new Date(t * 1000).toLocaleDateString(); };
 const store = {get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } },
   set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (e) {} }};
+// Plain words for the cause codes; the code stays as a small label.
+const PLAIN = {A1: "A spec was missing from the listing", A2: "Two listings looked identical",
+  A3: "The price changed mid-checkout", A4: "Over the agent's spending cap", A5: "Payment needed an OTP",
+  A6: "A server error the agent wouldn't retry", A7: "Returns policy was unreadable prose",
+  A8: "Delivery couldn't be confirmed", B1: "Declined: not enough funds", B2: "The card issuer was down",
+  B3: "The payment mandate had expired", B4: "The agent's budget was used up", B5: "The payment method was declined",
+  N1: "The store refused a request (new cause)", N2: "A better option was elsewhere (new cause)",
+  N3: "Analyst's hypothesis (new cause)", UNKNOWN: "No clear reason, so no guess"};
+const plain = (code, name) => PLAIN[code] || (name || code || "").replace(/_/g, " ");
+const STATUS_LABEL = {open: "shopping", abandoned: "stopped", recovering: "offer sent", recovered: "recovered",
+  exception: "needs a person", lost: "lost", converted: "bought"};
+const sl = s => STATUS_LABEL[s] || s;
 let KEY = store.get("hs_key"), ME = null, TAB = store.get("hs_tab") || "overview", FILTER = "", timer = null;
 
 async function api(path, opts = {}) {
@@ -115,34 +142,41 @@ async function api(path, opts = {}) {
   return body;
 }
 
-async function signIn(key) {
+async function signIn(key, fallback) {
   KEY = key;
-  try { ME = await api("/me"); } catch (e) { $("#loginerr").textContent = e.message; KEY = null; return; }
+  try { ME = await api("/me"); } catch (e) {
+    KEY = null; store.set("hs_key", null);
+    if (fallback) return sandbox();
+    $("#loginerr").textContent = e.message; return;
+  }
   store.set("hs_key", key);
   shell();
 }
 $("#signin").onclick = () => signIn($("#key").value.trim());
 $("#key").onkeydown = e => { if (e.key === "Enter") $("#signin").click(); };
-$("#sandbox").onclick = async () => {
-  const r = await fetch("/demo/api/sandbox"); const b = await r.json();
-  if (!r.ok) { $("#loginerr").textContent = b.error || "sandbox unavailable"; return; }
+async function sandbox() {
+  const r = await fetch("/demo/api/sandbox"); const b = await r.json().catch(() => ({}));
+  if (!r.ok) { $("#login").hidden = false; $("#loginerr").textContent = b.error || "sandbox unavailable"; return; }
   signIn(b.api_key);
-};
+}
+$("#sandbox").onclick = sandbox;
 $("#shopifybtn").onclick = () => shopifySignIn();
-$("#logout").onclick = () => { store.set("hs_key", null); location.hash = ""; location.reload(); };
+$("#logout").onclick = () => { store.set("hs_key", null); location.hash = "signin"; location.reload(); };
 
-const TABS = [["overview", "Overview"], ["journeys", "Journeys"], ["exceptions", "Needs approval"],
-  ["patterns", "Emerging patterns"], ["policy", "Rules & policy"], ["connect", "Connect your store"],
-  ["webhooks", "Webhooks"]];
+const TABS = [["overview", "Overview"], ["journeys", "Agent journeys"], ["exceptions", "Needs approval"]];
+const MORE = [["patterns", "Patterns"], ["policy", "Rules"], ["connect", "Connect a store"], ["webhooks", "Webhooks"]];
 
 function shell() {
   $("#logout").hidden = false;
+  $("#logout").textContent = ME.sandbox ? "Use your own API key" : "Sign out";
   $("#app").innerHTML = `
     <div class="top"><div><div class="eyebrow">${ME.sandbox ? "Sandbox merchant" : "Merchant"} · ${esc(ME.merchant_id)}</div>
-      <h1>${esc(ME.name)}</h1></div><div class="sp"></div>
+      <h1>${esc(ME.name)}</h1>
+      <p class="intro">${ME.sandbox ? "What a merchant sees. Every AI shopper that came to this store: the ones that stopped, why, and what was recovered. Click any journey for the evidence." : "Every AI shopper on your store: the ones that stopped, why, and what was recovered."}</p></div><div class="sp"></div>
       <button class="ks" id="ks" aria-pressed="false" title="Rule R-11: refuse every intervention until switched off">
         <span class="dot"></span>Kill switch</button></div>
-    <div class="tabs" role="tablist">${TABS.map(([k, l]) => `<button role="tab" data-t="${k}" aria-selected="${k === TAB}">${l}</button>`).join("")}</div>
+    <div class="tabs" role="tablist">${TABS.map(([k, l]) => `<button role="tab" data-t="${k}" aria-selected="${k === TAB}">${l}</button>`).join("")}
+      <div class="sp"></div><span class="morelbl">More:</span>${MORE.map(([k, l]) => `<button role="tab" class="minor" data-t="${k}" aria-selected="${k === TAB}">${l}</button>`).join("")}</div>
     <div id="view"></div><div id="drawer"></div>`;
   document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { TAB = b.dataset.t; store.set("hs_tab", TAB);
     document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", x === b)); render(); });
@@ -185,49 +219,49 @@ async function render(quiet) {
 function set(el, html) { if (el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; } }
 
 async function overview(v) {
-  const [m, lv] = await Promise.all([api("/metrics"), api("/ledger/verify")]);
+  const [m, lv, recent] = await Promise.all([api("/metrics"), api("/ledger/verify"), api("/journeys?limit=8")]);
   const causes = Object.entries(m.by_cause).sort((a, b) => b[1].at_risk - a[1].at_risk);
-  const refusals = Object.entries(m.refusals);
   set(v, `
   <div class="kpis">
-    <div class="kpi r"><div class="l">At risk · agents walked away</div><div class="v">${inr(m.at_risk_value)}</div><div class="s">${m.abandoned} journeys abandoned</div></div>
-    <div class="kpi g"><div class="l">Recovered</div><div class="v">${inr(m.recovered_value)}</div><div class="s">${(m.recovery_rate * 100).toFixed(1)}% of at-risk value · ${m.recovered} journeys</div></div>
-    <div class="kpi a"><div class="l">Needs a person</div><div class="v">${m.exceptions}</div><div class="s">refused by a rule, evidence attached</div></div>
-    <div class="kpi"><div class="l">Bought first time</div><div class="v">${inr(m.converted_value)}</div><div class="s">${m.converted} journeys · ${m.open} open now</div></div>
-    <div class="kpi"><div class="l">Margin given up</div><div class="v">${inr2(m.concession)}</div><div class="s">${m.recovered_value ? (m.concession / m.recovered_value * 100).toFixed(2) + "% of recovered" : "—"}</div></div>
+    <div class="kpi r"><div class="l">Walked away</div><div class="v">${inr(m.at_risk_value)}</div><div class="s">${m.abandoned} AI shoppers stopped before paying</div></div>
+    <div class="kpi g"><div class="l">Won back</div><div class="v">${inr(m.recovered_value)}</div><div class="s">${(m.recovery_rate * 100).toFixed(0)}% of it · ${m.recovered} shoppers came back and paid</div></div>
+    <div class="kpi a"><div class="l">Waiting for a person</div><div class="v">${m.exceptions}</div><div class="s">Handshake wouldn't act alone</div></div>
+    <div class="kpi"><div class="l">Bought first time</div><div class="v">${inr(m.converted_value)}</div><div class="s">${m.converted} shoppers · nothing to fix</div></div>
   </div>
   <div class="two">
-    <div class="card"><div class="hd"><h3>Why agents stopped</h3><div class="sp"></div><span class="small">green = recovered</span></div><div class="bd">
-      ${causes.length ? causes.map(([c, r]) => `<div class="causerow"><span class="c">${esc(c)}</span>
-        <div><div>${esc(r.name.replace(/_/g, " "))} <span class="muted">· ${r.count}</span></div>
+    <div class="card"><div class="hd"><h3>Why AI shoppers stopped</h3><div class="sp"></div><span class="small"><span class="key g"></span>won back <span class="key r"></span>still lost</span></div><div class="bd">
+      ${causes.length ? causes.map(([c, r]) => `<div class="causerow">
+        <div><div><b>${esc(plain(c, r.name))}</b> <span class="muted">· ${r.count} ${r.count === 1 ? "shopper" : "shoppers"}</span> <span class="code">${esc(c)}</span></div>
         <div class="stack"><i style="width:${r.at_risk ? Math.round(r.recovered / r.at_risk * 100) : 0}%"></i></div></div>
-        <span class="num">${inr(r.recovered)} / ${inr(r.at_risk)}</span></div>`).join("")
-        : `<div class="empty">No abandoned journeys yet. <a href="/demo">Send an agent shopping</a>.</div>`}
+        <span class="num">${inr(r.recovered)} <span class="muted">of ${inr(r.at_risk)}</span></span></div>`).join("")
+        : `<div class="empty">No AI shopper has stopped yet. <a href="/demo">Send one</a>.</div>`}
     </div></div>
-    <div style="display:grid;gap:14px;align-content:start">
-      <div class="card"><div class="hd"><h3>What the rules refused</h3></div><div class="bd">
-        ${refusals.length ? refusals.map(([k, r]) => `<div class="causerow" style="grid-template-columns:44px 1fr 30px"><span class="c">${esc(k)}</span><span>${esc(r.rule)}</span><span class="num">${r.count}</span></div>`).join("")
-          : `<div class="small">Nothing refused yet.</div>`}
-      </div></div>
-      <div class="card"><div class="hd"><h3>Audit ledger</h3><div class="sp"></div>
-        <span class="chip ${lv.valid ? "green" : "red"}"><span class="dot"></span>${lv.valid ? "chain verified" : "chain broken at " + lv.first_bad}</span></div>
-        <div class="bd small">${lv.entries} hash-chained entries. Every diagnosis, every rule check, every permit and every refusal. Re-verified just now, on read.</div></div>
-      <div class="card"><div class="hd"><h3>Webhooks</h3></div><div class="bd small">
-        ${Object.entries(m.webhooks).map(([k, n]) => `<span class="chip ${k === "delivered" ? "green" : k === "failed" ? "red" : ""}" style="margin-right:6px">${n} ${esc(k)}</span>`).join("") || "None sent yet."}</div></div>
-    </div>
+    <div class="card"><div class="hd"><h3>Latest shoppers</h3><div class="sp"></div><a class="small" href="#" id="alljs">See all →</a></div><div class="bd">
+      ${(recent.journeys || []).map(j => `<div class="recent" data-j="${esc(j.journey_id)}">
+        <span class="chip st-${esc(j.status)}">${esc(sl(j.status))}</span>
+        <div><div>${j.cause ? esc(plain(j.cause, j.cause_name)) : j.status === "converted" ? "Bought, nothing to explain" : "Still shopping"}</div>
+        <div class="small">${ago(j.last_event_at)} · ${esc(j.sku || "")}</div></div>
+        <span class="num">${inr(j.status === "recovered" ? j.recovered_value : j.basket_value)}</span></div>`).join("")
+        || `<div class="empty">Nobody yet. <a href="/demo">Send a shopper</a>.</div>`}
+      <p class="small trust"><span class="chip ${lv.valid ? "green" : "red"}"><span class="dot"></span>${lv.valid ? "audit trail verified" : "audit trail broken"}</span>
+        Every decision is written to a tamper-evident log (${lv.entries} entries).</p>
+    </div></div>
   </div>`);
+  v.querySelectorAll(".recent[data-j]").forEach(r => r.onclick = () => openJourney(r.dataset.j));
+  const all = v.querySelector("#alljs");
+  if (all) all.onclick = e => { e.preventDefault(); document.querySelector('.tabs [data-t="journeys"]').click(); };
 }
 
 const STATUS = ["", "open", "recovering", "recovered", "exception", "lost", "converted"];
 async function journeys(v, status, fixed) {
   const {journeys: js} = await api(`/journeys?limit=200${status ? "&status=" + status : ""}`);
   const bar = fixed ? `<p class="small" style="margin:0 0 10px">Journeys the rules would not act on alone: causes outside the playbook, or diagnoses below the confidence bar. Each carries the evidence and, where Handshake could build one from your catalogue, a drafted re-offer. Open one to approve, edit or dismiss it.</p>`
-    : `<div class="toolbar">${STATUS.map(s => `<button class="btn ${s === FILTER ? "" : "sec"} sm" data-f="${s}">${s || "all"}</button>`).join("")}</div>`;
+    : `<div class="toolbar">${STATUS.map(s => `<button class="btn ${s === FILTER ? "" : "sec"} sm" data-f="${s}">${s ? sl(s) : "all"}</button>`).join("")}</div>`;
   set(v, bar + `<div class="card tw"><table><thead><tr><th>When</th><th>Status</th><th>Why it stopped</th><th>What happened</th><th class="num">Value</th><th>Agent</th></tr></thead><tbody>
     ${js.map(j => `<tr class="click" data-j="${esc(j.journey_id)}">
       <td class="muted">${ago(j.last_event_at)}</td>
-      <td><span class="chip st-${esc(j.status)}">${esc(j.status)}</span></td>
-      <td>${j.cause ? `<b class="mono">${esc(j.cause)}</b> ${esc((j.cause_name || "").replace(/_/g, " "))}
+      <td><span class="chip st-${esc(j.status)}">${esc(sl(j.status))}</span></td>
+      <td>${j.cause ? `<b>${esc(plain(j.cause, j.cause_name))}</b> <span class="code">${esc(j.cause)}</span>
         <div class="small" style="max-width:52ch">${esc((j.explanation || "").slice(0, 150))}${(j.explanation || "").length > 150 ? "…" : ""}</div>` : `<span class="muted">${j.status === "open" ? "still shopping" : "—"}</span>`}</td>
       <td class="small">${j.intervention ? `<span class="chip green">${esc(j.intervention)}</span>` : ""}${j.binding_rule && !j.intervention ? `<span class="chip amber">held · ${esc(j.binding_rule)}</span>` : ""}${j.has_proposal && j.status === "exception" ? ` <span class="chip violet">fix drafted</span>` : ""}</td>
       <td class="num">${j.status === "recovered" ? `<span style="color:var(--green)">${inr2(j.recovered_value)}</span>` : inr2(j.basket_value)}</td>
@@ -247,8 +281,8 @@ async function openJourney(id) {
   const hyps = (dg.hypotheses || []).map(h => `<div class="hyp"><span class="c">${esc(h.cause)}</span><div class="bar ${h.score < 0.7 ? "low" : ""}"><i style="width:${Math.round(h.score * 100)}%"></i></div><span class="mono">${h.score.toFixed(2)}</span></div>`).join("");
   const rules = (vd.checklist || []).map(r => `<div class="rule ${esc(r.result)}"><span class="id">${esc(r.rule)}</span><span>${esc(r.text)}</span><span class="st">${r.result === "not_reached" ? "not needed" : esc(r.state)}</span></div>`).join("");
   $("#drawer").innerHTML = `<div class="scrim" id="scrim"></div><aside class="drawer" role="dialog" aria-label="Journey detail">
-    <div style="display:flex;gap:10px;align-items:center"><span class="chip st-${esc(j.status)}">${esc(j.status)}</span><span class="mono small">${esc(j.journey_id)}</span><div class="sp"></div><button class="btn sec sm" id="x">Close</button></div>
-    <h2 style="margin-top:10px">${dg.cause ? `${esc(dg.cause)} · ${esc((dg.name || "").replace(/_/g, " "))}` : j.status === "converted" ? "Bought first time" : "Still shopping"}</h2>
+    <div style="display:flex;gap:10px;align-items:center"><span class="chip st-${esc(j.status)}">${esc(sl(j.status))}</span><span class="mono small">${esc(j.journey_id)}</span><div class="sp"></div><button class="btn sec sm" id="x">Close</button></div>
+    <h2 style="margin-top:10px">${dg.cause ? `${esc(plain(dg.cause, dg.name))} <span class="code">${esc(dg.cause)}</span>` : j.status === "converted" ? "Bought first time" : "Still shopping"}</h2>
     <div class="small">agent <span class="mono">${esc(j.agent_id)}</span> · ${esc(j.sku)} · ${inr2(j.basket_value)} · stage ${esc(j.stage)}</div>
     ${dg.cause ? `<section><div class="eyebrow">Why it stopped · confidence ${Number(dg.confidence).toFixed(2)}${dg.contested ? " · contested" : ""}</div>
       <p style="margin:0 0 6px">${esc(dg.explanation)}</p>${ev}
@@ -410,13 +444,17 @@ async function hooks(v) {
 
 async function shopifySignIn() {
   const r = await fetch("/shopify/api/session"); const b = await r.json();
-  if (!r.ok) { $("#loginerr").textContent = b.error || "Shopify is not connected"; return; }
+  if (!r.ok) { $("#login").hidden = false; $("#loginerr").textContent = b.error || "Shopify is not connected"; return; }
   signIn(b.api_key);
 }
-// #shopify, or a Shopify journey link, opens the connected Shopify store's account.
+// Visitors go straight in: #shopify opens the connected Shopify store, a saved
+// key its own account, and anything else the sandbox store. The key form is
+// only for a merchant with their own account (#signin).
+fetch("/shopify/api/status").then(r => r.json()).then(s => { $("#shopifybtn").hidden = !s.connected; }).catch(() => {});
 if (/shopify/.test(location.hash)) shopifySignIn();
-else if (KEY) signIn(KEY);
-else if (/journey=|sandbox/.test(location.hash)) $("#sandbox").click();
+else if (/signin/.test(location.hash)) $("#login").hidden = false;
+else if (KEY) signIn(KEY, true);
+else sandbox();
 </script>
 </body>
 </html>

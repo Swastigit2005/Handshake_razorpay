@@ -125,28 +125,65 @@ details.study .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margi
 .feed .c{font-family:var(--fm);font-weight:600;color:#fff}
 .feed .x{color:#B9C6E8;margin-top:3px}
 .feed .st{font-size:11.5px;font-weight:600;padding:1px 7px;border-radius:999px;background:rgba(255,255,255,.1)}
+.go-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:20px}
+.go-row label{font-size:13px;display:flex;align-items:center;gap:6px}
+.more{margin-top:34px;display:grid;gap:12px}
+.more details.study{margin-top:0}
+.more .real{margin:4px 0 16px}
+.more .twoq{margin:4px 0 16px}
+.go-row .score{margin-top:0}
 </style>
 </head>
 <body>
 <nav class="nav"><div class="shell">
   <a class="mark" href="/"><svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#050505"/><path d="M11 9v14M11 9h4a3.5 3.5 0 0 1 0 7h-4" stroke="#4287FF" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M21 23V9M21 23h-4a3.5 3.5 0 0 1 0-7h4" stroke="#00BD6E" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>Handshake</a>
   <div class="navlinks">
-    <a href="/">Overview</a><a class="on" href="/demo">Live demo</a><a href="/merchant">Merchant dashboard</a>
-    <a href="/shop/">Demo store</a><a href="/shopify/">Shopify</a><a href="/console">Simulation lab</a><a href="/docs">API</a>
+    <a href="/">Overview</a><a class="on" href="/demo">Try it</a><a href="/merchant">Merchant view</a>
   </div>
   <div class="sp"></div><span class="tmode">Sandbox · test mode · no real money</span>
 </div></nav>
 
 <main class="shell">
 <section class="hero">
-  <h1>Why did the AI shopper stop?</h1>
-  <p class="dek">A person who abandons a cart leaves no reason. An AI agent doesn't say why either. But it leaves
-  something a person never does: a complete record of every request it made and every answer it got. Send a
-  shopper you know nothing about into a shop with problems you can't see. Handshake has to work out, from the
-  shop's own server log, why it stopped, and what to offer it so it comes back and pays.</p>
+  <h1>Send an AI shopper. See why it stops.</h1>
+  <p class="dek">One click sends a shopping agent with a random brief into a store with hidden problems nobody chose.
+  Handshake sees only the store&rsquo;s server log, and has to work out why the agent left and what would bring it back.
+  Its answer is then checked against the agent&rsquo;s own private reason.</p>
+  <div class="go-row">
+    <button class="btn big" id="mystery">Send a mystery shopper</button>
+    <label class="muted">Speed <select id="pace"><option value="0.3">Narrate</option><option value="0.1" selected>Brisk</option><option value="0">Instant</option></select></label>
+    <span class="score" id="score"></span>
+  </div>
+</section>
 
+<section>
+  <div class="row" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:18px">
+    <span class="muted" id="runmeta"></span>
+  </div>
+  <div class="stage">
+    <div class="card col veil" id="agentcard">
+      <div class="hd"><div class="who"><h3>The AI shopper</h3><small>its own reasoning</small></div><div class="sp"></div>
+        <span class="private">private · never sent</span>
+        <button class="btn sec sm" id="peekbtn" hidden>Peek</button></div>
+      <div class="peek">Hidden until Handshake answers, so you can't see the truth before it does.</div>
+      <div class="bd" id="agent"><div class="empty">Send a shopper to begin.</div></div>
+    </div>
+    <div class="card col">
+      <div class="hd"><div class="who"><h3>The shop's server</h3><small>Kaveri Home &amp; Tech's own log</small></div></div>
+      <div class="bd" id="shop"><div class="empty">Requests appear here as the agent makes them.</div></div>
+    </div>
+    <div class="card col">
+      <div class="hd"><div class="who"><h3>Handshake</h3><small>what the merchant is told</small></div><div class="sp"></div><a class="btn sec sm" id="openj" href="/merchant" hidden>Open in dashboard</a></div>
+      <div class="bd" id="hs"><div class="empty">Handshake sees only the HTTP traffic in the middle column.</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="more">
+  <details class="study" id="realbox">
+    <summary>Use your own AI agent <span class="muted">· connect Claude and ask it to buy something</span></summary>
   <div class="real" id="real">
-    <h2>Test it with a real AI agent</h2>
+    
     <p>The strongest test is an agent nobody on this project wrote. Connect Claude (or any MCP client) to the demo
     store and ask it to buy something. Its reasoning stays in your chat; the store sees only the requests it makes;
     Handshake sees only the store's traffic. Then compare Claude's own account with Handshake's diagnosis below.</p>
@@ -170,29 +207,17 @@ details.study .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margi
     </div>
   </div>
 
-  <div class="mystery">
-    <div>
-      <h2>Or send a scripted mystery shopper</h2>
-      <p>A random brief (budget, spending cap, delivery deadline, warranty, how much price movement it tolerates)
-      meets a shop with zero to two hidden problems. Four of the thirteen problems are ones nobody wrote a rule
-      for. Nobody picks; the truth is revealed only after Handshake answers.</p>
-      <div class="score" id="score"></div>
-    </div>
-    <div class="act">
-      <button class="btn big" id="mystery">Send a mystery shopper</button>
-      <span class="muted" style="font-size:12px">A scripted agent: quick, repeatable, but written by us.</span>
-      <label>Speed <select id="pace"><option value="0.3">Narrate</option><option value="0.1" selected>Brisk</option><option value="0">Instant</option></select></label>
-    </div>
-  </div>
-
+  </details>
   <details class="study" id="study">
-    <summary>Or study one cause at a time (you choose what goes wrong)</summary>
+    <summary>Study one problem at a time <span class="muted">· you pick what goes wrong</span></summary>
     <div class="row"><span class="muted">Teaching mode: you know the answer in advance. The mystery shopper is the real test.</span>
       <div class="sp"></div><button class="btn sec" id="go" disabled>Run this scenario</button></div>
     <div class="grid" id="grid"><div class="empty">Loading scenarios…</div></div>
     <div style="height:14px"></div>
   </details>
 
+  <details class="study">
+    <summary>How Handshake decides <span class="muted">· evidence first, then 11 fixed rules</span></summary>
   <div class="twoq">
     <div class="q">
       <div class="n">QUESTION 1 · WHY DID IT STOP?</div>
@@ -215,36 +240,17 @@ details.study .row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margi
       <li>A model can explain and draft; it can never move money</li></ul>
     </div>
   </div>
-</section>
-
-<section>
-  <div class="row" style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-top:30px">
-    <h2>Watch from three sides</h2>
-    <span class="muted" id="runmeta"></span>
-  </div>
-  <div class="stage">
-    <div class="card col veil" id="agentcard">
-      <div class="hd"><div class="who"><h3>The AI shopper</h3><small>its own reasoning</small></div><div class="sp"></div>
-        <span class="private">private · never sent</span>
-        <button class="btn sec sm" id="peekbtn" hidden>Peek</button></div>
-      <div class="peek">Hidden until Handshake answers, so you can't see the truth before it does.</div>
-      <div class="bd" id="agent"><div class="empty">Send a shopper to begin.</div></div>
-    </div>
-    <div class="card col">
-      <div class="hd"><div class="who"><h3>The shop's server</h3><small>Kaveri Home &amp; Tech's own log</small></div></div>
-      <div class="bd" id="shop"><div class="empty">Requests appear here as the agent makes them.</div></div>
-    </div>
-    <div class="card col">
-      <div class="hd"><div class="who"><h3>Handshake</h3><small>what the merchant is told</small></div><div class="sp"></div><a class="btn sec sm" id="openj" href="/merchant" hidden>Open in dashboard</a></div>
-      <div class="bd" id="hs"><div class="empty">Handshake sees only the HTTP traffic in the middle column.</div></div>
-    </div>
-  </div>
+  </details>
 </section>
 <p class="foot">Handshake never receives the agent's reasoning or the hidden conditions: the store is instrumented
 with the public SDK, which forwards request and response bodies and nothing else. The verdict compares Handshake's
 answer with the agent's own private record of why it stopped. Re-offers work because this demo agent polls for
 them; no agent platform does that today.</p>
 </main>
+<footer class="shell sitefoot">More: <a href="/shop/">the demo store</a> · <a href="/shop/admin">break the store</a> ·
+<a href="/shopify/">Shopify connector</a> · <a href="/console">simulation lab</a> · <a href="/docs">API reference</a> ·
+<a href="https://github.com/Swastigit2005/Handshake_razorpay">source on GitHub</a></footer>
+
 
 <script>
 const $ = s => document.querySelector(s);
