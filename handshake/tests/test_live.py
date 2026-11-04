@@ -726,7 +726,7 @@ def test_mystery_runs_are_reproducible_from_their_seed():
 def test_mystery_shoppers_end_to_end_with_approval(demo, monkeypatch):
     """Blind runs over real HTTP: sealed until judged; approved fixes recover."""
     monkeypatch.setattr(demo, "MYSTERY_WAIT", 12.0)
-    seeds = [103, 116, 108, 112]      # refused payment method, stock-out, drift, funds
+    seeds = [54, 43, 24, 76]   # refused payment (kettle), stock-out (kettle), drift (stand), funds (headphones)
     runs = [demo.start("mystery", pace=0, seed=s) for s in seeds]
     first = demo.view(runs[0]["run_id"])
     assert first["sealed"] and first["thoughts"] == [] and first["truth"] == []

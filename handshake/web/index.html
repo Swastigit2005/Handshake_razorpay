@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Handshake · when an AI shopper walks away</title>
+<meta name="description" content="AI agents abandon checkout and leave no one to email. Handshake reads the store's traffic, works out why the agent left, and sends it an offer it can act on, within rules the merchant controls.">
+<meta property="og:title" content="Handshake · when an AI shopper walks away">
+<meta property="og:description" content="You can't email a bot a coupon. Handshake works out why an AI shopper left, from the store's traffic alone, and brings it back.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://handshake-console.onrender.com/assets/social/handshake-og.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@500;600;700&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/web/hs.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23050505'/><path d='M11 9v14M11 9h4a3.5 3.5 0 0 1 0 7h-4' stroke='%231364F1' stroke-width='2.6' fill='none' stroke-linecap='round'/><path d='M21 23V9M21 23h-4a3.5 3.5 0 0 1 0-7h4' stroke='%2300BD6E' stroke-width='2.6' fill='none' stroke-linecap='round'/></svg>">
+<style>
+body{background:var(--bg)}
+.hero{padding-block:clamp(36px,6vw,64px) 22px;max-width:860px}
+.hero h1{font-size:clamp(34px,5.4vw,56px)}
+.hero p{font-size:clamp(16px,1.6vw,18.5px);color:var(--tx2);margin:16px 0 0;max-width:62ch}
+
+/* ---- the walkthrough ---- */
+.play{background:#fff;border:1px solid var(--line);border-radius:var(--r16);box-shadow:var(--e2);overflow:hidden}
+.pick{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--line2);background:var(--bg2)}
+.pick .lbl{font-size:13px;color:var(--tx3);margin-right:4px}
+.opt{font:600 13px var(--f);border:1px solid var(--line);background:#fff;color:var(--tx);border-radius:999px;
+  padding:6px 13px;cursor:pointer;transition:all .15s var(--ease)}
+.opt:hover{border-color:var(--tx3)}
+.opt[aria-pressed="true"]{background:var(--ink);color:#fff;border-color:var(--ink)}
+
+.steps{display:grid;grid-template-columns:repeat(6,1fr);gap:0;padding:16px 18px 6px;counter-reset:s}
+.st{position:relative;font-size:12.5px;color:var(--tx3);padding-top:16px;cursor:pointer;background:none;border:0;
+  text-align:left;font-family:var(--f);font-weight:500;line-height:1.3;padding-right:8px}
+.st::before{content:"";position:absolute;top:4px;left:0;right:0;height:4px;border-radius:2px;background:var(--bg3);margin-right:6px}
+.st.done::before{background:var(--blue)}
+.st.now{color:var(--ink);font-weight:600}
+.st.now::before{background:var(--blue)}
+.st.hs{color:var(--tx3)}
+
+.cap{padding:8px 18px 16px;min-height:72px}
+.cap .big{font-family:var(--fd);font-size:clamp(18px,2vw,22px);font-weight:600;color:var(--ink);letter-spacing:-.02em;line-height:1.3}
+.cap .sub{color:var(--tx2);font-size:14.5px;margin-top:4px}
+
+.lanes{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line2)}
+.lh{padding:12px 16px;border-bottom:1px solid var(--line2);display:flex;gap:10px;align-items:center}
+.lh + .lh{border-left:1px solid var(--line2)}
+.lh .ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;flex:none;font-size:15px}
+.lh b{display:block;font-family:var(--fd);font-size:14.5px;color:var(--ink)}
+.lh span{font-size:12px;color:var(--tx3)}
+.ic.agent{background:var(--amber-50);color:var(--amber)}
+.ic.store{background:var(--bg3);color:var(--tx2)}
+.ic.hs{background:var(--blue-50);color:var(--blue)}
+.cell{padding:6px 16px;min-height:0;transition:background .3s}
+.cell:nth-child(3n+2),.cell:nth-child(3n+3){border-left:1px solid var(--line2)}
+.cell.row-now{background:var(--blue-50)}
+.cell.row-now:nth-child(3n+1){box-shadow:inset 3px 0 0 var(--blue)}
+.b{border-radius:10px;padding:9px 12px;margin:6px 0;font-size:13.8px;line-height:1.45;opacity:0;transform:translateY(6px);
+  transition:opacity .35s var(--ease),transform .35s var(--ease)}
+.b.in{opacity:1;transform:none}
+.b.agent{background:var(--amber-50);color:#5b2b06}
+.b.store{background:var(--bg2);font-family:var(--fm);font-size:12.6px;color:var(--tx);border:1px solid var(--line2)}
+.b.hs{background:#fff;border:1px solid var(--blue-100);color:var(--tx)}
+.b.bad{background:var(--red-50);color:#7a1d14;border-color:var(--red-100)}
+.b.good{background:var(--green-50);color:#0b5232;border-color:var(--green-100)}
+.b .tag{display:none}
+.b b{font-weight:600}
+.b .code{font-family:var(--fm);font-weight:700;font-size:12.5px;margin-right:4px}
+
+.ctl{display:flex;align-items:center;gap:8px;padding:14px 18px;border-top:1px solid var(--line2);background:var(--bg2);flex-wrap:wrap}
+.ctl .sp{flex:1}
+.out{font-weight:600;font-size:14px}
+.out.green{color:var(--green)} .out.amber{color:var(--amber)} .out.red{color:var(--red)}
+.real{font-size:12px;color:var(--violet);background:var(--violet-50);border-radius:999px;padding:3px 10px;font-weight:600}
+
+@media (max-width:820px){
+  .steps{grid-template-columns:repeat(3,1fr);row-gap:10px}
+  .lanes{grid-template-columns:1fr}
+  .lh{display:none}
+  .cell{border-left:0!important;padding-block:0}
+  .cell:empty{display:none}
+  .b .tag{display:block;font:600 10.5px var(--f);letter-spacing:.05em;text-transform:uppercase;opacity:.7;margin-bottom:2px}
+  .b.store .tag{font-family:var(--f)}
+}
+
+/* ---- below the walkthrough ---- */
+.sec{padding-block:clamp(40px,6vw,64px) 0}
+.sec h2{margin-bottom:6px}
+.sec .lead2{color:var(--tx2);max-width:64ch;margin:0 0 20px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+@media (max-width:900px){.grid3{grid-template-columns:1fr}}
+.go{display:flex;flex-direction:column;gap:8px;padding:20px;text-decoration:none;color:inherit;
+  transition:transform .15s var(--ease),box-shadow .15s var(--ease)}
+.go:hover{transform:translateY(-2px);box-shadow:var(--e2)}
+.go .n{font-family:var(--fm);font-size:12px;color:var(--tx3)}
+.go h3{font-size:17px}
+.go p{margin:0;color:var(--tx2);font-size:14px}
+.go .arrow{margin-top:auto;font-weight:600;color:var(--blue);font-size:14px;text-decoration:none}
+.lanes{min-height:300px;align-content:start}
+.url{display:block;background:var(--bg3);border-radius:6px;padding:6px 9px;font-family:var(--fm);font-size:12.5px;
+  word-break:break-all;user-select:all;margin-top:2px}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border:1px solid var(--line);border-radius:var(--r12);background:#fff}
+.facts > div{padding:20px}
+.facts > div + div{border-left:1px solid var(--line2)}
+@media (max-width:900px){.facts{grid-template-columns:1fr}.facts > div + div{border-left:0;border-top:1px solid var(--line2)}}
+.facts .k{font-family:var(--fd);font-size:28px;font-weight:700;color:var(--ink);letter-spacing:-.03em}
+.facts p{margin:4px 0 0;color:var(--tx2);font-size:14px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:900px){.two{grid-template-columns:1fr}}
+.two ul{margin:0;padding-left:18px;color:var(--tx2);font-size:14.5px}
+.two li{margin:6px 0}
+footer{padding-block:48px 56px;color:var(--tx3);font-size:13px}
+footer a{color:var(--tx2)}
+</style>
+</head>
+<body>
+<nav class="nav"><div class="shell">
+  <a class="mark" href="/"><svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#050505"/><path d="M11 9v14M11 9h4a3.5 3.5 0 0 1 0 7h-4" stroke="#4287FF" stroke-width="2.6" fill="none" stroke-linecap="round"/><path d="M21 23V9M21 23h-4a3.5 3.5 0 0 1 0-7h4" stroke="#00BD6E" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg>Handshake</a>
+  <div class="navlinks">
+    <a class="on" href="/">Overview</a><a href="/demo">Live demo</a><a href="/merchant">Merchant dashboard</a>
+    <a href="/shop/">Demo store</a><a href="/shopify/">Shopify</a><a href="/docs">API</a>
+  </div>
+</div></nav>
+
+<main class="shell">
+  <section class="hero">
+    <div class="eyebrow">Revenue recovery for AI shoppers</div>
+    <h1>You can&rsquo;t email a bot a coupon.</h1>
+    <p>AI agents now buy things for people. When one gives up at checkout, it leaves no email and no cart to remind.
+    Handshake reads the store&rsquo;s own traffic, works out <b>why</b> the agent left, and sends it an offer it can act on,
+    within rules the merchant controls.</p>
+  </section>
+
+  <section class="play" aria-label="Walkthrough of one AI shopping trip">
+    <div class="pick" role="group" aria-label="What goes wrong">
+      <span class="lbl">Pick what goes wrong:</span>
+      <span id="opts"></span>
+    </div>
+    <div class="steps" id="steps"></div>
+    <div class="cap" aria-live="polite"><div class="big" id="capBig"></div><div class="sub" id="capSub"></div></div>
+    <div class="lanes" id="lanes">
+      <div class="lh"><div class="ic agent">◐</div><div><b>The AI shopper</b><span>thinks privately; Handshake never sees this</span></div></div>
+      <div class="lh"><div class="ic store">▤</div><div><b>The store&rsquo;s server</b><span>the only thing Handshake reads</span></div></div>
+      <div class="lh"><div class="ic hs">✓</div><div><b>Handshake</b><span>what the merchant is told</span></div></div>
+    </div>
+    <div class="ctl">
+      <button class="btn sec sm" id="back">← Back</button>
+      <button class="btn sm" id="next">Next →</button>
+      <button class="btn sec sm" id="auto">▶ Play</button>
+      <div class="sp"></div>
+      <span id="realtag"></span>
+      <span class="out" id="out"></span>
+    </div>
+  </section>
+
+  <section class="sec">
+    <h2>Now watch it for real</h2>
+    <p class="lead2">The walkthrough is a script. These aren&rsquo;t: every run below is a live agent, a live store and Handshake answering from the traffic alone.</p>
+    <div class="grid3">
+      <a class="card go" href="/demo">
+        <span class="n">01 · one click</span>
+        <h3>Send a mystery shopper</h3>
+        <p>A shopping agent gets a random brief (a kettle, headphones or a laptop stand) and the store gets hidden problems nobody chose.
+        Handshake has to work out what happened. Its answer is checked against the agent&rsquo;s private reason.</p>
+        <span class="arrow">Open the live demo →</span>
+      </a>
+      <div class="card go">
+        <span class="n">02 · your own agent</span>
+        <h3>Let Claude shop the store</h3>
+        <p>Add the store as a remote MCP server in Claude, then ask it to buy something in your own words.</p>
+        <span class="url" id="mcp">https://handshake-console.onrender.com/mcp</span>
+        <a class="arrow" href="/shop/admin">Break something in the store first →</a>
+      </div>
+      <a class="card go" href="/merchant">
+        <span class="n">03 · the merchant&rsquo;s side</span>
+        <h3>Open the merchant dashboard</h3>
+        <p>Every journey, the evidence for each diagnosis, all 11 rules it was checked against, and the offers waiting for a person to approve.</p>
+        <span class="arrow">Use the sandbox store →</span>
+      </a>
+    </div>
+  </section>
+
+  <section class="sec">
+    <h2>Tested on agents nobody here wrote</h2>
+    <p class="lead2">A diagnosis is only worth something if it is checked against the truth.</p>
+    <div class="facts">
+      <div><div class="k">Claude</div><p>shopped the demo store and a real Shopify store over MCP. Handshake explained every stop from the HTTP traffic, and the runs found bugs that seeded data never did.
+        <a href="https://github.com/Swastigit2005/Handshake_razorpay/blob/main/docs/PROOF.md">Read the runs →</a></p></div>
+      <div><div class="k">13 + open</div><p>known causes (a missing spec, a price jump, a spending cap, an OTP wall…), plus problems outside that list, which it names from the traffic and hands to a person.</p></div>
+      <div><div class="k">11 rules</div><p>decide whether Handshake may act at all: re-offer limits, a margin floor, quiet hours, a confidence threshold and a kill switch. No model can override them.</p></div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="two">
+      <div class="card"><div class="hd"><h3>How it knows why</h3></div><div class="bd"><ul>
+        <li><b>Payment-rail codes</b> are trusted most, then <b>what the agent did</b> (which product it opened, what the quote said), then <b>what the agent claims</b>. A claim can confirm the evidence, never replace it.</li>
+        <li>When the evidence is thin, it says <b>&ldquo;unknown&rdquo;</b> and sends the case to a person rather than guess.</li>
+        <li>A problem outside the known list is named, but never acted on automatically. A person approves the offer first.</li>
+      </ul></div></div>
+      <div class="card"><div class="hd"><h3>What this is not, yet</h3></div><div class="bd"><ul>
+        <li>A sandbox: no real money moves. Payments are simulated; Shopify orders run in catalogue mode until Shopify approves order access.</li>
+        <li>Tested on a handful of real-agent runs and hundreds of scripted ones, not on production traffic at volume.</li>
+        <li>Built as a portfolio project, end to end: SDK, API, PostgreSQL, signed webhooks, MCP, a Shopify connector.</li>
+      </ul></div></div>
+    </div>
+  </section>
+
+  <footer>
+    <a href="https://github.com/Swastigit2005/Handshake_razorpay">Source on GitHub</a> ·
+    <a href="/docs">API reference</a> · <a href="/simulation">The earlier simulation write-up</a> · <a href="/console">Simulation lab</a>
+  </footer>
+</main>
+
+<script>
+const STAGES = ["Shops", "Hits a problem", "Leaves without a word", "Handshake: why?", "Handshake: may it act?", "Outcome"];
+const LANE = {agent: "AI shopper", store: "Store server", hs: "Handshake"};
+
+// Each story: what the agent thinks (private), what the store's server logs
+// (all Handshake gets), and what Handshake concludes, stage by stage.
+const STORIES = [
+ {id: "spec", label: "A spec is missing", outcome: ["green", "₹2,358.82 recovered · no discount spent"],
+  caps: [
+   ["An AI agent is shopping for its owner.", "Its brief: an electric kettle, at least 1.5 litres and 1,200 W. It must verify both."],
+   ["The listing it wants doesn't say its wattage.", "A person would shrug and buy. The agent was told to verify, so it can't."],
+   ["It leaves. No message, no reason, no email address.", "To the store it looks like any other dead session."],
+   ["Handshake reads the traffic and finds the gap.", "The agent opened one listing, the one missing a spec every other kettle carries, and stopped right after."],
+   ["The fix costs nothing, so the rules allow it straight away.", "All 11 rules checked. No discount is involved."],
+   ["The missing spec is written back, and the agent buys.", "The store's listing is now fixed for every future shopper too."]],
+  steps: [
+   [0, "agent", "Owner wants a kettle: ≥1.5 L, ≥1,200 W. Let me look."],
+   [0, "store", "GET /feed?q=kettle → 200 (2 items)"],
+   [1, "store", "GET /products/KET-170 → 200"],
+   [1, "agent", "Tejas 1.7 L, ₹1,999. But the listing doesn't say its wattage.", "bad"],
+   [2, "agent", "I was told to verify it. I can't, so I won't buy."],
+   [2, "store", "…silence. No checkout opened."],
+   [3, "hs", "<span class='code'>A1</span><b>Missing spec</b> · confidence 0.92<br>Opened KET-170, which lacks <b>power_watts</b>, a spec every kettle in the store carries. Stopped right after."],
+   [4, "hs", "All 11 rules pass. Repairing a listing costs no margin.", "good"],
+   [5, "store", "power_watts = 1500 written back to KET-170"],
+   [5, "agent", "Offer: the listing now says 1,500 W. That meets my brief. Buying."],
+   [5, "store", "POST /checkout/…/complete → 200 · paid ₹2,358.82", "good"]]},
+
+ {id: "price", label: "The price jumped", outcome: ["green", "₹2,358.82 recovered · ₹212 honoured"],
+  caps: [
+   ["An agent finds the right kettle and opens a checkout.", "Its owner allowed the price to move by at most 3%."],
+   ["Just before paying, the store re-quotes 9% higher.", "A stale price cache. People sigh and pay; this agent has a hard limit."],
+   ["It cancels. The reason it gives: price_changed.", "An agent can claim anything, so Handshake doesn't take its word for it."],
+   ["The traffic agrees: the quote really did jump 9%.", "The agent's claim matches the evidence, so it confirms the diagnosis."],
+   ["Honouring the old price costs ₹212. Is that allowed?", "The margin floor, the per-agent limits and quiet hours all pass."],
+   ["The first quote is locked, and the agent pays it.", "A sale that was gone, saved for the cost of the cache bug."]],
+  steps: [
+   [0, "agent", "Tejas 1.7 L fits the brief. Opening checkout."],
+   [0, "store", "POST /checkout_sessions → 200 · total ₹2,358.82"],
+   [1, "store", "POST /checkout_sessions/cs_41 → 200 · re-quote ₹2,571.11"],
+   [1, "agent", "+9.0%. My owner allowed 3%.", "bad"],
+   [2, "agent", "Cancelling. Reason: price_changed."],
+   [2, "store", "POST /checkout/cs_41/cancel → 200"],
+   [3, "hs", "<span class='code'>A3</span><b>Price moved mid-checkout</b> · 0.96<br>₹2,358.82 → ₹2,571.11 between quote and re-quote. The agent's stated reason agrees."],
+   [4, "hs", "Concession ₹212.29 is above the margin floor. 11 of 11 rules pass.", "good"],
+   [5, "store", "Price lock: cs_41 held at ₹2,358.82 for 15 min"],
+   [5, "agent", "Offer: the original quote is honoured. Within my limit. Paying."],
+   [5, "store", "POST /checkout/cs_41/complete → 200 · paid ₹2,358.82", "good"]]},
+
+ {id: "cap", label: "Over the agent's budget", real: true, outcome: ["amber", "Handed to the one person who can say yes"],
+  caps: [
+   ["Claude is shopping a real Shopify store for headphones.", "Its brief: at least 35 hours of battery, under $250 all-in."],
+   ["The only pair with enough battery comes to $280.", "The cheaper pair is $190 but only 30 hours. Claude saw it and skipped it."],
+   ["Claude cancels. It is not allowed past $250.", "This is a real run, recorded word for word in the project's proof file."],
+   ["Handshake reads it as a spending-cap stop, and reads more.", "Claude passed over the cheaper pair, so battery mattered. Offering it back would be useless."],
+   ["Nothing in stock fits both the cap and the need.", "So the cheap swap is ruled out, and the next rung applies: ask the owner."],
+   ["Claude takes the request to its user instead of overstepping.", "“Tell me to approve $280 and I'll complete it.” The merchant also learns: Studio at $250 would have sold."]],
+  steps: [
+   [0, "agent", "Headphones, ≥35 h battery, under $250. Searching."],
+   [0, "store", "GET /shopify/acp/feed?q=headphones → 200 (2 items)"],
+   [1, "agent", "Wireless: $190 but 30 h. No. Studio: 40 h. Checking the total."],
+   [1, "store", "POST /checkout_sessions → 200 · total $280.00 (cap $250)"],
+   [2, "agent", "$30 over my cap. Cancelling, unpaid.", "bad"],
+   [2, "store", "POST /checkout/…/cancel → 200"],
+   [3, "hs", "<span class='code'>A4</span><b>Over the spending cap</b> · 0.99<br>$280.00 against a $250.00 cap. The agent skipped the cheaper pair: <b>battery_hours</b> mattered."],
+   [4, "hs", "Cheaper swap ruled out: the only one is the pair it rejected. Next rung: ask the owner to raise the cap."],
+   [5, "agent", "“The store asked you to approve $280. I won't on my own; say the word and I'll buy.”", "good"],
+   [5, "hs", "To the merchant: Studio at $250 would have sold."]]},
+
+ {id: "pay", label: "A payment method is refused", outcome: ["green", "Recovered after one click by a person"],
+  caps: [
+   ["An agent has a kettle in its basket and goes to pay.", "It pays with a UPI Reserve mandate, the usual method for agents."],
+   ["The store's checkout refuses that method.", "Not one of Handshake's known causes: nobody wrote a rule for it."],
+   ["The agent gives up.", "Its owner never finds out why."],
+   ["Handshake still names it, from the refusal in the traffic.", "But a cause it has no rule for is capped below the confidence threshold."],
+   ["Rule R-10 stops it acting on its own.", "Instead it drafts an offer and puts it in front of the merchant."],
+   ["The merchant approves; the agent retries by card.", "New problems get a human in the loop, every time."]],
+  steps: [
+   [0, "agent", "Basket ready: Tejas 1.7 L. Paying with my UPI mandate."],
+   [0, "store", "POST /checkout_sessions → 200 · total ₹2,358.82"],
+   [1, "store", "POST /checkout/…/complete → 400 payment_method_unsupported", "bad"],
+   [2, "agent", "The store won't take my mandate. Stopping."],
+   [3, "hs", "<span class='code'>N1</span><b>Merchant refused the request</b> · 0.66<br>A new cause: none of the 13 known ones fits. Read from the 400 the store returned."],
+   [4, "hs", "<span class='code'>R-10</span>0.66 is below 0.70: no automatic action. Drafted for the merchant: “Retry with card or UPI intent.”", "bad"],
+   [5, "hs", "Merchant clicked Approve.", "good"],
+   [5, "agent", "Offer: card works here. Retrying by card."],
+   [5, "store", "POST /checkout/…/complete → 200 · paid ₹2,358.82", "good"]]},
+
+ {id: "none", label: "Declined, no reason given", outcome: ["red", "₹1,876.20 at risk · nothing spent · a person looks"],
+  caps: [
+   ["An agent pays for a kettle.", "Everything checks out: the right specs, a good quote."],
+   ["The payment rail declines it, and gives no reason code.", "Funds? Fraud? A bank outage? The traffic doesn't say."],
+   ["The agent stops.", ""],
+   ["Handshake refuses to guess.", "No evidence points anywhere, so the diagnosis is “unknown”, at confidence 0."],
+   ["Unknown means no offer, by rule.", "Discounting because something went wrong is how margin leaks."],
+   ["It goes to the exceptions queue with the evidence attached.", "Saying “I don't know” is part of the design, not a failure of it."]],
+  steps: [
+   [0, "agent", "Tejas Compact 1.5 L, ₹1,590. Every spec checks out."],
+   [0, "store", "POST /checkout_sessions → 200 · total ₹1,876.20"],
+   [1, "store", "POST /checkout/…/complete → 402 (no reason code)", "bad"],
+   [2, "agent", "Payment declined, and the shop gave no reason. Stopping."],
+   [3, "hs", "<span class='code'>?</span><b>Unknown</b> · confidence 0.00<br>The rail declined without a reason code. Nothing else in the traffic explains it."],
+   [4, "hs", "<span class='code'>R-10</span>Below threshold. No offer is made.", "bad"],
+   [5, "hs", "Exceptions queue: ₹1,876.20 at risk, evidence attached. Nothing spent."]]},
+];
+
+const $ = s => document.querySelector(s);
+let story = STORIES[0], stage = -1, timer = null;
+
+function buildOpts() {
+  $("#opts").innerHTML = "";
+  for (const s of STORIES) {
+    const b = document.createElement("button");
+    b.className = "opt"; b.textContent = s.label; b.setAttribute("aria-pressed", s === story);
+    b.onclick = () => { stopAuto(); story = s; buildOpts(); render(-1); go(0); };
+    $("#opts").appendChild(b);
+  }
+}
+
+function buildSteps() {
+  $("#steps").innerHTML = STAGES.map((t, i) =>
+    `<button class="st" data-i="${i}">${i + 1}. ${t}</button>`).join("");
+  document.querySelectorAll(".st").forEach(b => b.onclick = () => { stopAuto(); go(+b.dataset.i); });
+}
+
+function render() {
+  const lanes = $("#lanes");
+  lanes.querySelectorAll(".cell").forEach(c => c.remove());
+  for (let r = 0; r < STAGES.length; r++) {
+    for (const lane of ["agent", "store", "hs"]) {
+      const cell = document.createElement("div");
+      cell.className = "cell"; cell.dataset.row = r;
+      story.steps.filter(s => s[0] === r && s[1] === lane).forEach(s => {
+        const b = document.createElement("div");
+        b.className = `b ${lane} ${s[3] || ""}`; b.dataset.row = r;
+        b.innerHTML = `<span class="tag">${LANE[lane]}</span>` + s[2];
+        cell.appendChild(b);
+      });
+      lanes.appendChild(cell);
+    }
+  }
+  $("#realtag").innerHTML = story.real ? `<span class="real">From a real run: Claude on a Shopify store</span>` : "";
+}
+
+function go(n) {
+  stage = Math.max(0, Math.min(STAGES.length - 1, n));
+  document.querySelectorAll(".st").forEach((b, i) => {
+    b.classList.toggle("done", i < stage); b.classList.toggle("now", i === stage);
+  });
+  document.querySelectorAll(".cell").forEach(c => {
+    c.classList.toggle("row-now", +c.dataset.row === stage);
+    c.hidden = +c.dataset.row > stage;              // the story grows as it plays
+  });
+  let delay = 0;
+  document.querySelectorAll(".b").forEach(b => {
+    const r = +b.dataset.row;
+    if (r < stage) b.classList.add("in");
+    else if (r === stage) { if (!b.classList.contains("in")) { setTimeout(() => b.classList.add("in"), delay); delay += 260; } }
+    else b.classList.remove("in");
+  });
+  const [big, sub] = story.caps[stage];
+  $("#capBig").textContent = big; $("#capSub").textContent = sub;
+  const last = stage === STAGES.length - 1;
+  $("#out").className = "out " + (last ? story.outcome[0] : "");
+  $("#out").textContent = last ? story.outcome[1] : "";
+  $("#back").disabled = stage === 0;
+  $("#next").textContent = last ? "Try another problem →" : "Next →";
+}
+
+function next() {
+  if (stage < STAGES.length - 1) return go(stage + 1);
+  story = STORIES[(STORIES.indexOf(story) + 1) % STORIES.length];
+  buildOpts(); render(); go(0);
+}
+function stopAuto() { clearInterval(timer); timer = null; $("#auto").textContent = "▶ Play"; }
+function startAuto() {
+  $("#auto").textContent = "❚❚ Pause";
+  timer = setInterval(() => {
+    if (stage === STAGES.length - 1) { stopAuto(); return; }
+    go(stage + 1);
+  }, 3600);
+}
+
+$("#back").onclick = () => { stopAuto(); go(stage - 1); };
+$("#next").onclick = () => { stopAuto(); next(); };
+$("#auto").onclick = () => timer ? stopAuto() : (stage === STAGES.length - 1 ? (go(0), startAuto()) : startAuto());
+document.addEventListener("keydown", e => {
+  if (e.target.closest("input,textarea")) return;
+  if (e.key === "ArrowRight") { stopAuto(); next(); }
+  if (e.key === "ArrowLeft") { stopAuto(); go(stage - 1); }
+});
+$("#mcp").textContent = location.origin + "/mcp";
+
+buildOpts(); buildSteps(); render(); go(0);
+// Play the first story on its own once the walkthrough scrolls into view.
+const seen = new IntersectionObserver(es => {
+  if (es.some(e => e.isIntersecting)) { seen.disconnect(); if (stage === 0) startAuto(); }
+}, {threshold: .5});
+seen.observe(document.querySelector(".play"));
+</script>
+</body>
+</html>

@@ -78,18 +78,14 @@ def _i03(dg, j, ctx):
             concession)
 
 
-def passed_over(dg, j, ctx):
-    """What the agent's choice reveals, when it picked an item listed above its
-    cap while cheaper ones of the same kind were in front of it: it was not
-    choosing on price. Returns (skipped skus, {facet: floor}) — the cheaper
-    items it saw and skipped, and, for each facet on which its pick beat all
-    of them, the value an alternative has to beat too. Empty when the pick
-    looked affordable (tax or shipping pushed it over), so any cheaper item is
-    a fair offer."""
+def skipped_for(sku, ctx):
+    """The agent chose `sku` over cheaper items of the same kind it had in front
+    of it, so it was not choosing on price. Returns (the skipped skus, {facet:
+    floor}): for each facet on which its pick beat all of them, the value an
+    alternative has to beat too."""
     from .detectors import LOWER_IS_BETTER, current_attempt, facets
-    d = dg["detail"]
-    cap, me = d.get("declared_cap"), ctx["product"](d.get("sku", ""))
-    if cap is None or not me or me.get("price", 0) <= cap or "events" not in ctx:
+    me = ctx["product"](sku)
+    if not me or "events" not in ctx:
         return set(), {}
     seen = set()
     for e in current_attempt(ctx["events"]())[0]:
@@ -98,18 +94,28 @@ def passed_over(dg, j, ctx):
         elif e["type"] == "product.view" and e.get("http_status") == 200:
             seen.add(e.get("sku") or (e.get("request") or {}).get("sku"))
     skipped = []
-    for sku in seen - {me["sku"], None}:
-        p = ctx["product"](sku)
+    for other in seen - {me["sku"], None}:
+        p = ctx["product"](other)
         if p and p.get("category") == me.get("category") and p.get("price", 0) < me["price"]:
             skipped.append(p)
     mine, floors = facets(me), {}
     for facet, value in mine.items():
-        theirs = [facets(p).get(facet) for p in skipped]
-        theirs = [v for v in theirs if v is not None]
+        theirs = [v for v in (facets(p).get(facet) for p in skipped) if v is not None]
         lower = facet in LOWER_IS_BETTER
         if theirs and all((value < v) if lower else (value > v) for v in theirs):
             floors[facet] = (min if lower else max)(theirs)
     return {p["sku"] for p in skipped}, floors
+
+
+def passed_over(dg, j, ctx):
+    """For a cap breach: what the agent skipped, when it picked an item listed
+    above its cap. Empty when the pick looked affordable (tax or shipping pushed
+    it over), so any cheaper item is a fair offer."""
+    d = dg["detail"]
+    cap, me = d.get("declared_cap"), ctx["product"](d.get("sku", ""))
+    if cap is None or not me or me.get("price", 0) <= cap:
+        return set(), {}
+    return skipped_for(me["sku"], ctx)
 
 
 def _meets(p, floors):

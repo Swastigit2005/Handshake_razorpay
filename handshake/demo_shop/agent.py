@@ -163,7 +163,9 @@ class ShoppingAgent:
         if fav:
             return fav
         if fits:
-            return max(fits, key=lambda p: (p.get("attributes") or {}).get("capacity_l", 0))
+            rank = self.m.get("rank", "capacity_l")
+            return max(fits, key=lambda p: (p.get("attributes") or {}).get(rank, 0)
+                       if isinstance((p.get("attributes") or {}).get(rank), (int, float)) else 0)
         return next((p for p in feed if p["sku"] == self.m.get("prefer_sku")), feed[0])
 
     def _verify(self, view):

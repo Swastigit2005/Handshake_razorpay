@@ -549,8 +549,14 @@ def stored_chain(run_id: str, session_id: str = ""):
 
 @app.get("/", response_class=HTMLResponse)
 def index():
-    """The landing page. A stranger should understand the problem, see the
-    mechanism and read the honest limitations before they touch a control."""
+    """The landing page: one agent purchase, stepped through in three lanes, so
+    a stranger grasps the idea in one go before they touch a control."""
+    return FileResponse(WEB_DIR / "index.html")
+
+
+@app.get("/simulation", response_class=HTMLResponse)
+def simulation_writeup():
+    """The earlier landing page, about the simulation lab."""
     return LANDING
 
 

@@ -122,26 +122,62 @@ CONDITIONS = ["missing_attribute", "variant_collision", "price_drift", "otp_wall
 OFF_PLAYBOOK = ["slow_delivery", "unsupported_payment", "out_of_stock", "shipping_fee"]
 
 CONDITION_TEXT = {
-    "missing_attribute": "the feed dropped the 1.7 L kettle's wattage",
-    "variant_collision": "the 1.7 L kettle was listed twice, identically",
+    "missing_attribute": "the feed dropped a required spec from the {product}",
+    "variant_collision": "the {product} was listed twice, identically",
     "price_drift": "the checkout re-quoted 9% higher",
     "otp_wall": "payment demanded an OTP",
     "flaky_error": "payment returned one 503",
-    "prose_policy": "the 1.7 L kettle's returns policy was prose",
+    "prose_policy": "the {product}'s returns policy was prose",
     "unserviceable": "the delivery table lost the agent's pincode",
     "insufficient_funds": "the rail declined for funds",
     "silent_decline": "the rail declined with no reason code",
-    "slow_delivery": "a warehouse transfer made the 1.7 L kettle ship in 9 days (not in the feed)",
+    "slow_delivery": "a warehouse transfer made the {product} ship in 9 days (not in the feed)",
     "unsupported_payment": "the shop refuses UPI Reserve mandates at payment",
-    "out_of_stock": "the 1.7 L kettle sold out between listing and checkout",
+    "out_of_stock": "the {product} sold out between listing and checkout",
     "shipping_fee": "a ₹149 shipping fee appeared only at re-quote",
 }
 
+# What a mystery shopper can be sent to buy. Each brief targets one product (the
+# owner's favourite); product-scoped problems land on it. Caps straddle the
+# target's price with 18% GST, so some briefs cannot afford it at all.
+BRIEFS = [
+    {"label": "an electric kettle", "product": "1.7 L kettle",
+     "goal": "Buy an electric kettle, at least 1.5 litres and 1,200 W.",
+     "category": "home_kitchen", "query": "kettle", "prefer_sku": "KET-170",
+     "needs": ["capacity_l", "power_watts", "warranty_months"],
+     "min": {"capacity_l": 1.5, "power_watts": 1200}, "rank": "capacity_l",
+     "caps": [1900.0, 2400.0, 3000.0, 5000.0]},
+    {"label": "wireless headphones", "product": "over-ear headphones",
+     "goal": "Buy wireless headphones with at least 30 hours of battery.",
+     "category": "audio", "query": "headphones", "prefer_sku": "HPH-045",
+     "needs": ["driver_mm", "battery_hours", "codec_support"],
+     "min": {"battery_hours": 30}, "rank": "battery_hours",
+     "caps": [4500.0, 5000.0, 6000.0, 6000.0]},
+    {"label": "a laptop stand", "product": "aluminium laptop stand",
+     "goal": "Buy a laptop stand for a 15.6-inch laptop.",
+     "category": "laptop_accessories", "query": "stand", "prefer_sku": "LST-AL1",
+     "needs": ["compatibility", "material", "weight_g"], "min": {}, "rank": "weight_g",
+     "caps": [2000.0, 2500.0, 3000.0, 3000.0]},
+]
+_LAST = {"target": None, "conditions": None}
 
-def mystery(rng):
-    """(mandate, conditions) — a random brief and a random set of shop problems."""
+
+def condition_text(condition, product="1.7 L kettle"):
+    return CONDITION_TEXT[condition].format(product=product)
+
+
+def mystery(rng, avoid_repeat=False):
+    """(mandate, conditions) — a random brief and a random set of shop problems.
+    With `avoid_repeat`, the product and the problems differ from the last run,
+    so consecutive runs never look the same."""
+    briefs = BRIEFS
+    if avoid_repeat and _LAST["target"]:
+        briefs = [b for b in BRIEFS if b["prefer_sku"] != _LAST["target"]] or BRIEFS
+    brief = rng.choice(briefs)
     m = dict(BASE_MANDATE)
-    m["cap"] = rng.choice([1900.0, 2400.0, 3000.0, 3000.0, 5000.0])
+    m.update({k: brief[k] for k in ("category", "query", "prefer_sku", "needs", "min", "rank")})
+    m["product"] = brief["product"]
+    m["cap"] = rng.choice(brief["caps"])
     m["budget"] = max(m["cap"], 3000.0)
     m["drift_tolerance"] = rng.choice([0.02, 0.03, 0.05, 0.08])
     m["max_ship_days"] = rng.choice([None, None, 3, 5])
@@ -153,15 +189,19 @@ def mystery(rng):
     if m["min_warranty_months"]:
         rules.append(f"warranty ≥ {m['min_warranty_months']} months")
     rules.append(f"returns ≥ {m['min_returns_days']} days")
-    m["goal"] = ("Buy an electric kettle, at least 1.5 litres and 1,200 W. "
-                 "Rules from my owner: " + ", ".join(rules) + ".")
-    count = rng.choice([0, 1, 1, 1, 2])
+    m["goal"] = brief["goal"] + " Rules from my owner: " + ", ".join(rules) + "."
     pool = CONDITIONS + OFF_PLAYBOOK * 2           # off-playbook problems are common
-    conditions = []
-    while len(conditions) < count:
-        c = rng.choice(pool)
-        if c not in conditions:
-            conditions.append(c)
+    for _ in range(20):
+        count = rng.choice([0, 1, 1, 1, 1, 2, 2])
+        conditions = []
+        while len(conditions) < count:
+            c = rng.choice(pool)
+            if c not in conditions:
+                conditions.append(c)
+        if not avoid_repeat or set(conditions) != set(_LAST["conditions"] or ()) or not conditions:
+            break
+    if avoid_repeat:
+        _LAST.update(target=m["prefer_sku"], conditions=conditions)
     return m, conditions
 
 

@@ -50,6 +50,7 @@ class ShopState:
         self.patches = {}         # journey_id -> {sku: {attr: value}}
         self.policies = {}        # journey_id -> {sku: policy}
         self.withdrawn = {}       # journey_id -> {sku}
+        self.targets = {}         # journey_id -> sku its per-run problems land on
         self.serviceable = {}     # journey_id -> {sku}
         self.sessions = {}        # checkout_id -> session
         self.approvals = {}       # token -> checkout_id
@@ -74,16 +75,21 @@ class ShopState:
             return False
         base = _base(sku) if sku else None
         if condition in self.faults.get(journey_id, set()):
-            # Per-run (demo) faults target the 1.7 L kettle when product-scoped.
-            if condition not in PRODUCT_SCOPED or base in (None, MYSTERY_TARGET):
+            # Per-run (demo) faults land on the run's target product when
+            # product-scoped: the product its brief is after.
+            if condition not in PRODUCT_SCOPED or base in (None, self.target(journey_id)):
                 return True
         if condition in self.store["global"]:
             return True
         return bool(base and condition in self.store["products"].get(base, set()))
 
+    def target(self, journey_id):
+        return self.targets.get(journey_id, MYSTERY_TARGET)
+
     def twins(self, journey_id):
         """SKUs listed twice (variant collision) for this agent."""
-        out = {MYSTERY_TARGET} if self.has(journey_id, "variant_collision", MYSTERY_TARGET) else set()
+        mine = self.target(journey_id)
+        out = {mine} if self.has(journey_id, "variant_collision", mine) else set()
         out |= {s for s, c in self.store["products"].items() if "variant_collision" in c
                 and "variant_collision" not in self.resolved.get(journey_id, set())}
         return out - {s.removesuffix("-B") for s in self.withdrawn.get(journey_id, set())}

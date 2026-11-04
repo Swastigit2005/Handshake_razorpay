@@ -17,7 +17,7 @@ from ..live import pipeline, store
 from ..sdk import HandshakeClient
 from . import app as shop_app
 from .agent import ShoppingAgent, urllib_json
-from .scenarios import CONDITION_TEXT, OFF_PLAYBOOK, SCENARIOS, judge, mandate_for, mystery
+from .scenarios import OFF_PLAYBOOK, SCENARIOS, condition_text, judge, mandate_for, mystery
 
 MERCHANT_ID = "m_demo_kaveri"
 SANDBOX_SETTINGS = {"idle_seconds": 45, "reoffer_ttl_seconds": 180,
@@ -74,8 +74,9 @@ def start(scenario, pace=0.35, reoffer_wait=30.0, seed=None):
     run_id = f"run_{uuid.uuid4().hex[:10]}"
     thoughts = []
     if scenario == "mystery":
+        fresh = seed is None             # a replayed seed reproduces its run exactly
         seed = seed if seed is not None else random.randrange(1, 10**9)
-        mandate, conditions = mystery(random.Random(seed))
+        mandate, conditions = mystery(random.Random(seed), avoid_repeat=fresh)
         reoffer_wait = max(reoffer_wait, MYSTERY_WAIT)   # time for a person to approve
     else:
         mandate = mandate_for(scenario)
@@ -83,6 +84,7 @@ def start(scenario, pace=0.35, reoffer_wait=30.0, seed=None):
     agent = ShoppingAgent(STATE["base_url"], mandate, ",".join(conditions),
                           http=STATE["http"], log=thoughts, reoffer_wait=reoffer_wait,
                           pace=pace)
+    shop_app.SHOP.targets[agent.journey_id] = mandate.get("prefer_sku") or shop_app.MYSTERY_TARGET
     run = {"run_id": run_id, "scenario": scenario, "agent_id": agent.agent_id,
            "journey_id": agent.journey_id, "thoughts": thoughts, "status": "running",
            "started": time.time(), "finished": 0.0, "outcome": agent.outcome, "error": "",
@@ -120,7 +122,8 @@ def view(run_id, peek=False):
     if run["scenario"] == "mystery":
         meta = {"title": "Mystery shopper", "family": "mystery", "expect": None,
                 "story": "Hidden shop conditions: " + ("; ".join(
-                    CONDITION_TEXT[c] + (" (outside the playbook)" if c in OFF_PLAYBOOK else "")
+                    condition_text(c, run["mandate"].get("product", "1.7 L kettle"))
+                    + (" (outside the playbook)" if c in OFF_PLAYBOOK else "")
                     for c in run["conditions"]) or "none — any stop came from the brief alone")
                 + ". The agent's brief: " + run["mandate"]["goal"]}
     else:
